@@ -221,9 +221,41 @@ def _bloqueio(xml):
 
 
 # ─────────────── garantir o app/perfil (navega sozinho) ───────
+PERM_PKG = "com.android.permissioncontroller"
+
+
+def fechar_permissao_android(d, log=None):
+    """Pedido de permissão do ANDROID na frente do IG (1º uso num aparelho novo — ex: a instância do
+    brechó, 21/10: "Permitir que a app Instagram lhe envie notificações?" travou o story). Notificação,
+    contatos e localização → NÃO PERMITIR; fotos/vídeos/câmera/microfone → PERMITIR (o story precisa
+    da galeria). Devolve True se tratou um pedido."""
+    try:
+        if (d.app_current() or {}).get("package") != PERM_PKG:
+            return False
+        msg = d(resourceId=PERM_PKG + ":id/permission_message")
+        txt = ((msg.info.get("text") or "") if msg.exists else "").lower()
+        negar = any(k in txt for k in ("notifica", "notification", "contact", "localiza", "location"))
+        ids = (("permission_deny_button", "permission_deny_and_dont_ask_again_button") if negar else
+               ("permission_allow_button", "permission_allow_all_button",
+                "permission_allow_foreground_only_button", "permission_allow_one_time_button"))
+        for i in ids:
+            b = d(resourceId=f"{PERM_PKG}:id/{i}")
+            if b.exists:
+                b.click()
+                _log(log, f"pedido do Android ({txt[:60] or 'permissão'}): {'não permitir' if negar else 'permitir'}")
+                _sleep(1.0, 1.6)
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def garantir_app(d, log=None):
     """Garante o Instagram em PRIMEIRO PLANO — abre se estiver fechado/minimizado (ex: emulador
     parado na home do Android). Devolve True se o IG está em foreground."""
+    for _ in range(3):   # pedido de permissão do Android por cima do IG → responde antes
+        if not fechar_permissao_android(d, log):
+            break
     try:
         cur = (d.app_current() or {}).get("package")
     except Exception:
@@ -326,14 +358,24 @@ def trocar_conta(d, nome, log):
     """Troca pra conta `nome` pelo seletor nativo do IG (perfil → nome → lista → conta).
     Todas as contas têm que estar logadas no device. Devolve True se ficou nela."""
     nome = nome.strip()
-    # garante o perfil aberto (onde fica o seletor no topo)
-    for _ in range(5):
+    resolver_desafio(d, log)   # uma conta presa em verificação humana trava o seletor pra todas
+    # garante o perfil aberto (onde fica o seletor no topo). O "voltar" pode TIRAR do IG (ex: depois
+    # de postar um story) → aí reabre o app em vez de seguir voltando na tela inicial do Android
+    # (story em lote 20/10: segue6/8/9 puladas com "não achei o seletor")
+    for _ in range(6):
         if d(resourceId=rid(ACC_SWITCHER)).exists:
             break
         if d(resourceId=rid(PROFILE_TAB)).exists:
             d(resourceId=rid(PROFILE_TAB)).click()
         else:
-            d.press("back")
+            try:
+                fora = (d.app_current() or {}).get("package") != IG_PKG
+            except Exception:
+                fora = False
+            if fora:
+                garantir_app(d, log)
+            else:
+                d.press("back")
         _sleep(1.2, 2.0)
     if conta_atual(d) == nome:
         _log(log, f"já está na {nome}")
@@ -387,6 +429,13 @@ def trocar_conta(d, nome, log):
         agora = conta_atual(d)
         if agora == nome:
             break
+        if agora and not re.fullmatch(r"[a-z0-9._]{1,30}", agora):
+            # título que NÃO é um @ ("O que aconteceu", tela de passagem do IG por cima do perfil —
+            # segue14 run-405, 21/10) → fecha e lê de novo, em vez de achar que é outra conta
+            try:
+                d.press("back")
+            except Exception:
+                pass
         _sleep(1.3, 1.9)
     ok = (agora == nome)
     _log(log, f"troca pra {nome}: {'OK' if ok else 'ficou em ' + (agora or '?')}")
