@@ -1870,7 +1870,7 @@ def _estado_botao(xml, username):
 
 
 def seguir_curtidores(d, log, limite=0, entre=(1, 3), pausa_cada=0, pausa_longa=(20, 60),
-                      parar_flag=None, base=0):
+                      parar_flag=None, base=0, simular=False):
     """Na folha de curtidores ABERTA, segue TODOS (ou até `limite`>0), um por vez relendo a
     tela a cada clique. VERIFICA se cada follow COLOU (o botão mudou de 'Seguir'); se o IG
     desfizer vários seguidos = soft-block → para. Devolve (seguidos, motivo, viu_usuarios).
@@ -1913,6 +1913,17 @@ def seguir_curtidores(d, log, limite=0, entre=(1, 3), pausa_cada=0, pausa_longa=
         if nomes:
             viu_users = True
         novo = next(((u, xy) for u, xy in botoes if u not in vistos), None)
+        if novo and simular:
+            # SIMULAÇÃO: percorre a lista igual, mas NÃO toca em "Seguir" (conta como se tivesse)
+            u = novo[0]
+            vistos.add(u)
+            seguidos += 1
+            k = base + seguidos
+            _log(log, f"  + @{str(u).lstrip('@')}  ({k}/{(base + limite) if limite else k}) · simulado")
+            if limite and seguidos >= limite:
+                return seguidos, "limite", viu_users
+            _sleep(0.4, 0.9)
+            continue
         if novo:
             u, (x, y) = novo
             vistos.add(u)
@@ -2160,7 +2171,7 @@ def _marcar_feito(reg, autor):
 # ─────────────────────────── orquestração ─────────────────────
 def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follows_run=0,
               delay_post=(90, 240), entre=(1, 3), pausa_cada=0, pausa_longa=(20, 60),
-              inicio=None, parar_flag=None):
+              inicio=None, parar_flag=None, simular=False):
     """Fluxo: entra no chat → sobe até a fronteira (último reagido) → processa os posts SEM
     reação em ordem de envio (mais antigo primeiro) → ao seguir TODOS os curtidores, reage ❤️
     pra marcar. Para na hora se bloquear. Devolve dict com o saldo.
@@ -2270,7 +2281,8 @@ def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follow
         restante = (limite_follows_run - total_follows) if limite_follows_run else 0
         seguidos, motivo, viu = seguir_curtidores(d, log, limite=restante, entre=entre,
                                                   pausa_cada=pausa_cada, pausa_longa=pausa_longa,
-                                                  parar_flag=parar_flag, base=total_follows)
+                                                  parar_flag=parar_flag, base=total_follows,
+                                                  simular=simular)
         total_follows += seguidos
         _log(log, f"  post: +{seguidos} follows ({motivo})")
 
@@ -2287,7 +2299,11 @@ def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follow
 
         if motivo == "fim":
             # só conclui se a lista realmente carregou (viu curtidores); senão deixa pendente
-            if viu:
+            if viu and simular:
+                feitos_run.add(post["chave"])       # simulação: não registra nem reage ❤
+                _log(log, f"  (simulação: não marquei o post de {post['autor']})")
+                posts_feitos += 1
+            elif viu:
                 feitos_run.add(post["chave"])
                 _marcar_feito(reg_feitos, post["chave"])   # REGISTRO = fonte da verdade (persiste)
                 if marcar_post(d, log, post["chave"]):     # ❤️ best-effort (marcador visual na frota)
