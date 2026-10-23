@@ -228,6 +228,8 @@ def garantir_app(d, log=None):
         cur = (d.app_current() or {}).get("package")
     except Exception:
         cur = None
+    if cur == IG_PKG:
+        resolver_desafio(d, log)   # conta presa em verificação humana → sai dela antes de seguir
     if cur != IG_PKG:
         try:
             d.app_start(IG_PKG, use_monkey=True)   # abre/traz pro foreground sem saber a activity
@@ -796,6 +798,40 @@ AGUARDA_APROV_KW = ("verifica as notifica", "verifique as notifica", "check your
 DESAFIO_HUMANO_KW = ("confirma que és uma pessoa", "confirme que você é uma pessoa",
                      "confirme que voce e uma pessoa", "confirm you're a human", "confirm that you're a human",
                      "confirm you are a human")
+
+
+# o agente define: callback(conta) → push "conta com bloqueio" + marca "bloqueada" no backend
+AO_DESAFIO = None
+
+
+def desafio_humano(d):
+    """Alguma conta presa em "Confirma que és uma pessoa"? Devolve o @ dela ("?" se não deu pra
+    ler) ou None. Essa tela fica na frente do IG inteiro e trava o emulador pra TODAS as contas."""
+    try:
+        low = _dump(d).lower()
+        if not any(k in low for k in DESAFIO_HUMANO_KW):
+            return None
+        m = re.search(r"(?:tua conta|sua conta|your account),?\s+@?([a-z0-9._]{1,30})", low)
+        return m.group(1) if m else "?"
+    except Exception:
+        return None
+
+
+def resolver_desafio(d, log=None):
+    """Se uma conta caiu em verificação humana: encerra a sessão dela (destrava as outras), avisa via
+    AO_DESAFIO e devolve True — quem chamou segue com as contas livres (22/10, segue13)."""
+    conta = desafio_humano(d)
+    if not conta:
+        return False
+    _log(log, f"!! @{conta} caiu em verificação humana (\"confirma que és uma pessoa\") — tirando do "
+              f"emulador e seguindo com as contas livres")
+    sair_do_desafio(d, log)
+    if AO_DESAFIO and conta != "?":
+        try:
+            AO_DESAFIO(conta)
+        except Exception:
+            pass
+    return True
 
 
 def sair_do_desafio(d, log=None):
