@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0] — 2026-10-22
+
+### Adicionado
+- feat: login em aparelho novo (aprovação no celular ou código, tela de login direta, senha incorreta do IG em pt-PT)
+- feat: conta em verificação humana sai do emulador sozinha e avisa (gancho `AO_DESAFIO`)
+- feat: modo simulação (percorre sem seguir nem marcar)
+
+### Corrigido
+- fix: permissão do Android e telas de passagem não travam a troca de conta
+
+### Documentação
+- docs: README com login em aparelho novo, desafio e simulação
+
 ## [1.0.0] — 2026-10-20
 
 ### Adicionado
