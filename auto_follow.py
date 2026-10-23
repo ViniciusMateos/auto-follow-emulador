@@ -753,6 +753,8 @@ EXISTENTE_TXT = ("Iniciar sessão numa conta existente", "Já tens uma conta",
                  "Ja tens uma conta", "Já tem uma conta", "Iniciar sessão", "Entrar", "Log in")
 # diálogo "Guardar/Salvar dados de início de sessão?" — preferimos GUARDAR (mantém a conta logada
 # no device, que é o objetivo do reconectar). Fallback = "Agora não".
+SALVAR_LOGIN_FRASES = ("guardar as tuas informações", "guardar as informações", "guardar os dados de acesso",
+                       "salvar suas informações", "salvar informações de login", "save your login info")
 SALVAR_LOGIN_TXT = ("Guardar informações", "Guardar", "Salvar informações", "Salvar", "Save")
 AGORA_NAO_TXT = ("Agora não", "Agora nao", "Não agora", "Nao agora", "Not now", "Not Now")
 # botões de confirmar código
@@ -763,6 +765,7 @@ CODIGO_KW = ("código", "codigo", "code", "confirma", "verifica", "dois fatores"
              "two-factor", "autentica", "6 dígitos", "6 digitos", "segurança")
 # erro de credencial
 CRED_ERRO_KW = ("palavra-passe estava incorreta", "palavra-passe que introduziste",
+                "palavra-passe incorreta", "palavra-passe que inseriste",   # IG 451 (pt-PT), 20/10
                 "senha incorreta", "senha que você inseriu", "incorrect password",
                 "password you entered", "não foi possível encontrar a tua conta",
                 "nao foi possivel encontrar", "couldn't find your account",
@@ -773,6 +776,23 @@ BLOQ_LOGIN_KW = ("suspendemos", "suspended", "foi desativada", "desativámos", "
                  "conta não está visível", "conta nao esta visivel")
 # desafio "Confirma que és uma pessoa" (captcha do IG, ChallengeActivity) — o bot NÃO resolve; e se a
 # conta ficar logada nele, toda abertura do IG cai nessa tela e trava os outros bots (segue15, 20/10)
+# login em APARELHO NOVO: "Escolhe uma forma de confirmar que és tu" (notificação no outro aparelho /
+# código por e-mail ou SMS) — visto no 1º login do brechó na instância própria (20/10/2026)
+ESCOLHER_METODO_KW = ("forma de confirmar", "métodos de confirmação", "metodos de confirmacao",
+                      "choose a way to confirm", "confirm it's you", "confirmar que é você",
+                      "confirmar que és tu")
+NOTIF_OUTRO_KW = ("noutro dispositivo", "em outro dispositivo", "outro dispositivo",
+                  "on another device", "another device")
+METODO_CODIGO_KW = ("e-mail", "email", "sms", "mensagem de texto", "text message", "whatsapp")
+# tela de ESPERA da aprovação (não importa quem escolheu o método): só esperar o toque no celular
+AGUARDA_APROV_FORTE = ("a aguardar aprova", "aguardando aprova", "verifica as tuas notifica",
+                       "verifique suas notifica", "verifique as notifica", "check your notifications",
+                       "waiting for approval")
+# depois de pedir a aprovação: "verifica as notificações noutro dispositivo" (espera o toque no celular)
+AGUARDA_APROV_KW = ("verifica as notifica", "verifique as notifica", "check your notifications",
+                    "aguardando aprova", "a aguardar aprova", "waiting for approval",
+                    "aprova o início de sessão", "aprove o login", "approve the login",
+                    "noutro dispositivo", "em outro dispositivo", "another device")
 DESAFIO_HUMANO_KW = ("confirma que és uma pessoa", "confirme que você é uma pessoa",
                      "confirme que voce e uma pessoa", "confirm you're a human", "confirm that you're a human",
                      "confirm you are a human")
@@ -1042,8 +1062,19 @@ def _fechar_dialogos_pos(d, log):
     fez = False
     xml = _dump(d)
     low = xml.lower()
-    # "Guardar/Salvar as informações de início de sessão?" → GUARDAR (mantém logado no device)
-    if (("guardar" in low or "salvar" in low or "save your login" in low) and
+    # "Guardar/Salvar as informações de início de sessão?" → GUARDAR (mantém logado no device).
+    # guardar: "A AGUARDAR aprovação" (tela de aprovar no outro aparelho) NÃO é esse diálogo — o
+    # substring casava e o bot ficava tocando na tela de espera a cada 3s (brechó 20/10)
+    # frase COMPLETA do diálogo primeiro ("Guardar as tuas informações de acesso?", brechó 21/10) —
+    # ela não depende de nada mais na tela (antes o bot ficou 3 min parado nela)
+    if any(k in low for k in SALVAR_LOGIN_FRASES):
+        if _tocar_botao(d, ("Guardar", "Salvar", "Save"), exato=True) or                 _tocar_botao(d, AGORA_NAO_TXT, exato=True):
+            _log(log, "diálogo salvar-login tratado")
+            _sleep(1.2, 2.0)
+            return True
+    if any(k in low for k in AGUARDA_APROV_FORTE):
+        return False
+    if ((re.search(r"guardar", low) or "salvar" in low or "save your login" in low) and
             ("início de sessão" in low or "inicio de sessao" in low or "dados de login" in low or
              "login info" in low or "informações de" in low or "informacoes de" in low)):
         if (_tocar_botao(d, SALVAR_LOGIN_TXT, exato=False) or
@@ -1083,13 +1114,15 @@ def _resolver_pos_login(d, user, get_codigo, log):
     fim = time.time() + 360
     pediu_codigo = False
     cod_deadline = None
+    aprov_pedida = False     # já escolheu "notificação noutro dispositivo"?
+    metodo_tentou = 0
     while time.time() < fim:
         xml = _dump(d)
         low = xml.lower()
 
         # 1) erro de credencial → aborta
         if any(k in low for k in CRED_ERRO_KW):
-            _log(log, "falhou: credenciais inválidas")
+            _log(log, "falhou: o Instagram disse que a senha está incorreta — confere a senha salva em Contas")
             _back_out(d, 3)
             return {"ok": False, "motivo": "credenciais_invalidas"}
 
@@ -1126,6 +1159,47 @@ def _resolver_pos_login(d, user, get_codigo, log):
                 _back_out(d, 3)
                 return {"ok": False, "motivo": "sem_codigo"}
             time.sleep(5)   # polling ~5s
+            continue
+
+        # 2b) aparelho novo → "Escolhe uma forma de confirmar que és tu": pede a NOTIFICAÇÃO no outro
+        #     aparelho (o celular aprova com um toque); sem ela, "Mostrar mais" → código por e-mail/SMS
+        #     (cai no fluxo de código do passo 2, que o app manda pela chave da conta)
+        if any(k in low for k in ESCOLHER_METODO_KW) and not _tela_de_codigo(xml) and metodo_tentou < 4:
+            metodo_tentou += 1
+            if any(k in low for k in NOTIF_OUTRO_KW) and _tocar_botao(d, NOTIF_OUTRO_KW, exato=False, preferir="cima"):
+                _sleep(0.8, 1.4)
+                _tocar_botao(d, CONFIRMA_TXT)
+                _log(log, f"o Instagram pediu pra confirmar o login: abre o Instagram no celular (na conta "
+                          f"@{user}) e toca em aprovar — espero até 5 min")
+                aprov_pedida = True
+                fim = max(fim, time.time() + 330)
+                _sleep(3.0, 4.5)
+                continue
+            if _tocar_botao(d, ("Mostrar mais", "Ver mais", "Show more", "Mais opções"), exato=False):
+                _sleep(1.2, 2.0)
+                xml2 = _dump(d).lower()
+                if any(k in xml2 for k in METODO_CODIGO_KW) and _tocar_botao(d, METODO_CODIGO_KW, exato=False, preferir="cima"):
+                    _sleep(0.8, 1.4)
+                    _tocar_botao(d, CONFIRMA_TXT)
+                    _log(log, "o Instagram vai mandar um código (e-mail/SMS) — quando chegar, toque na "
+                              f"chave da @{user} em Contas e digite")
+                    fim = max(fim, time.time() + 330)
+                    _sleep(3.0, 4.5)
+                    continue
+            _sleep(2.0, 3.0)
+            continue
+
+        # 2c) esperando a aprovação no outro aparelho → só espera o toque no celular (a tela some
+        #     sozinha quando aprova). Vale também se o método foi escolhido por fora do bot.
+        if (any(k in low for k in AGUARDA_APROV_FORTE)
+                or (aprov_pedida and any(k in low for k in AGUARDA_APROV_KW)))                 and not d(resourceId=rid(PROFILE_TAB)).exists:
+            if _fechar_dialogos_pos(d, log):   # aprovou e já veio o "guardar informações"
+                continue
+            if not aprov_pedida:
+                _log(log, f"esperando você aprovar o login no celular (conta @{user}) — até 5 min")
+                aprov_pedida = True
+                fim = max(fim, time.time() + 330)
+            time.sleep(5)
             continue
 
         # 3a) "Confirma que és uma pessoa" (captcha) → não dá pra resolver sozinho: avisa, tira a conta
@@ -1278,6 +1352,24 @@ def login_conta(d, user, senha, get_codigo=None, log=None):
             _log(log, "falhou: não consegui abrir o Instagram")
             return {"ok": False, "motivo": "app_nao_abriu"}
         _sleep(1.2, 2.0)
+
+        # 0) o IG já abriu NA TELA DE LOGIN (aparelho sem conta nenhuma — ex: a instância própria
+        #    do brechó): preenche direto, não tem seletor de contas pra abrir. Numa instância que
+        #    ACABOU de ligar o IG demora a montar a tela → espera até ~15s (olhar cedo levou o login
+        #    pro caminho do seletor e falhou — run-401, 20/10)
+        if senha:
+            for _ in range(6):
+                if d(resourceId=rid(PROFILE_TAB)).exists:
+                    break
+                if _tem_form_login(_dump(d)):
+                    _log(log, "o Instagram está na tela de login — preenchendo")
+                    if _preencher_login(d, user, senha, log):
+                        _sleep(0.8, 1.6)
+                        _tocar_entrar(d, log)
+                        _sleep(4.0, 6.0)
+                        return _resolver_pos_login(d, user, get_codigo, log)
+                    break
+                _sleep(2.0, 3.0)
 
         # já está ativo nessa conta?
         try:
