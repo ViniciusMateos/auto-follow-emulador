@@ -11,11 +11,19 @@ fica logada no app de verdade, a sessão não cai.
    registro da frota, `posts_feitos.json`). Nunca começa num post qualquer do meio.
 3. Processa pra baixo, em ordem de envio: abre o post → lista de curtidas → segue todo mundo.
 4. Reage ❤ no post pra marcar como feito (uma conta por post, coordenando a frota).
-5. Para na hora se o Instagram mostrar bloqueio de ação; o lote aborta depois de 2 soft-blocks seguidos.
+5. Para na hora se o Instagram mostrar bloqueio de ação; o agente aborta o lote depois de N
+   soft-blocks seguidos e deixa a conta que tomou soft-block descansando (tudo pelo modo).
+
+Com `simular=True` ele percorre tudo igual (chat, curtidores), mas não segue ninguém nem marca o post.
 
 Também tem as funções de **conta** que o agente usa: listar as contas logadas (seletor do IG),
-trocar de conta, **logar conta nova pelo formulário** (com código de verificação pelo app) e sair do
-desafio "confirma que és uma pessoa".
+trocar de conta (reabre o IG se sair dele e ignora telas de passagem), **logar conta nova pelo
+formulário** (com código pelo app, ou aprovação no seu celular quando o aparelho é novo) e
+responder os pedidos de permissão do Android.
+
+**Verificação humana** ("confirma que és uma pessoa"): `resolver_desafio()` encerra a sessão da
+conta presa (senão o IG do emulador trava pra todas) e chama `AO_DESAFIO(conta)` — o agente usa
+esse gancho pra marcar a conta como bloqueada e mandar um push.
 
 ## Onde roda
 
