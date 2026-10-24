@@ -794,14 +794,16 @@ def listar_contas_logadas(d, log=None, com_indisponiveis=False, resolver=True):
 # por resourceId. O ÚNICO resource-id confiável no fluxo é ACC_SWITCHER (abre o seletor de contas
 # a partir do perfil); o botão "Adicionar conta do Instagram" vive DENTRO desse seletor como um
 # android.widget.Button com content-desc/texto (confirmado em switcher_dump.xml ao vivo).
-ADD_ACCOUNT_TXT = ("Adicionar conta do Instagram", "Adicionar conta existente",
+# (23/10/2026: o IG 451 do MuMu passou a mostrar só "Adicionar Instagram" no seletor)
+ADD_ACCOUNT_TXT = ("Adicionar Instagram", "Add Instagram",
+                   "Adicionar conta do Instagram", "Adicionar conta existente",
                    "Adicionar conta", "Add account", "Iniciar sessão numa conta existente")
 # botão de submeter o login
 LOGIN_BTN_TXT = ("Iniciar sessão", "Iniciar sessao", "Iniciar sessão.", "Entrar", "Log in",
                  "Log In", "Iniciar sessão numa conta")
 # ir pra forma de login a partir de um menu "adicionar conta" (quando não cai direto no form)
 EXISTENTE_TXT = ("Iniciar sessão numa conta existente", "Já tens uma conta",
-                 "Ja tens uma conta", "Já tem uma conta", "Iniciar sessão", "Entrar", "Log in")
+                 "Ja tens uma conta", "Já tem uma conta", "Iniciar sessão", "Inicia sessão", "Entrar", "Log in")
 # diálogo "Guardar/Salvar dados de início de sessão?" — preferimos GUARDAR (mantém a conta logada
 # no device, que é o objetivo do reconectar). Fallback = "Agora não".
 SALVAR_LOGIN_FRASES = ("guardar as tuas informações", "guardar as informações", "guardar os dados de acesso",
@@ -1025,18 +1027,39 @@ def _back_out(d, n=4):
             pass
 
 
+def _achar_adicionar_conta(d, cands=ADD_ACCOUNT_TXT, rolagens=4):
+    """Acha o botão 'Adicionar conta' no seletor de contas. Ele fica no FIM da lista: com muitas
+    contas logadas (segue17 entrou e a segue18 falhou com 'não achei', 23/10) ele sai da tela —
+    então rola a folha pra cima (dedo de baixo pra cima: nunca fecha a folha) até aparecer."""
+    for volta in range(rolagens + 1):
+        for cand in cands:
+            for sel in (d(descriptionContains=cand), d(textContains=cand)):
+                try:
+                    if sel.exists:
+                        return sel
+                except Exception:
+                    pass
+        if volta < rolagens:
+            try:
+                W, H = d.window_size()
+            except Exception:
+                W, H = 900, 1600
+            d.swipe(W // 2, int(H * 0.85), W // 2, int(H * 0.45), 0.4)
+            _sleep(0.8, 1.2)
+    return None
+
+
 def _tocar_adicionar_conta(d, log):
     """Dentro do seletor de contas: toca 'Adicionar conta do Instagram'. True se tocou."""
-    for cand in ADD_ACCOUNT_TXT:
-        for sel in (d(descriptionContains=cand), d(textContains=cand)):
-            try:
-                if sel.exists:
-                    sel.click()
-                    _log(log, "toquei 'adicionar conta'")
-                    return True
-            except Exception:
-                pass
-    return False
+    sel = _achar_adicionar_conta(d)
+    if sel is None:
+        return False
+    try:
+        sel.click()
+        _log(log, "toquei 'adicionar conta'")
+        return True
+    except Exception:
+        return False
 
 
 def _entrar_form_existente(d, log):
@@ -1343,26 +1366,23 @@ def _login_conta_salva(d, user, get_codigo, log, senha=None):
             d(resourceId=rid(ACC_SWITCHER)).click(); _sleep(1.6, 2.4)
     except Exception:
         pass
-    add = d(descriptionContains="Adicionar conta")
-    if not add.exists:
-        add = d(textContains="Adicionar conta")
-    if not add.exists:
-        _log(log, "falhou: não achei 'Adicionar conta' no seletor")
+    add = _achar_adicionar_conta(d)   # "Adicionar Instagram"/"Adicionar conta"; rola se tiver muita conta
+    if add is None:
+        _log(log, "falhou: não achei 'Adicionar Instagram' no seletor")
         _back_out(d, 2)
         return {"ok": False, "motivo": "sem_adicionar_conta"}
     add.click(); _sleep(2.2, 3.2)
-    ex = d(descriptionContains="conta existente")
-    if not ex.exists:
-        ex = d(textContains="conta existente")
-    if not ex.exists:
-        ex = d(descriptionContains="Iniciar sess")
-    if not ex.exists:
-        ex = d(textContains="Iniciar sess")
-    if not ex.exists:
-        _log(log, "falhou: não achei 'Iniciar sessão numa conta existente'")
-        _back_out(d, 3)
-        return {"ok": False, "motivo": "sem_iniciar_sessao"}
-    ex.click()
+
+    def _existente():
+        # IG 451 (23/10): a folha depois de "Adicionar Instagram" diz "Inicia sessão" (sem o R) e
+        # "Criar novo Instagram" — "Iniciar sess" não casava com ela
+        for sel in (d(descriptionContains="conta existente"), d(textContains="conta existente"),
+                    d(descriptionContains="Iniciar sess"), d(textContains="Iniciar sess"),
+                    d(description="Inicia sessão"), d(text="Inicia sessão"),
+                    d(descriptionContains="Inicia sess"), d(textContains="Inicia sess")):
+            if sel.exists:
+                return sel
+        return None
 
     def _salva():
         # a conta `user` na lista de contas salvas (content-desc = username, às vezes "user, ...")
@@ -1376,6 +1396,21 @@ def _login_conta_salva(d, user, get_codigo, log, senha=None):
             if sel.exists:
                 return sel
         return None
+
+    # depois do 'Adicionar': o menu "Iniciar sessão numa conta existente" (fluxo antigo) OU já direto
+    # a lista de contas salvas / 'Usar outro perfil' / o formulário — o novo pode pular o menu
+    ex = None
+    for _ in range(6):
+        ex = _existente()
+        if ex is not None or _salva() is not None or _outro() is not None or _tem_form_login(_dump(d)):
+            break
+        _sleep(0.9, 1.3)
+    if ex is not None:
+        ex.click()
+    elif _salva() is None and _outro() is None and not _tem_form_login(_dump(d)):
+        _log(log, "falhou: depois de 'Adicionar Instagram' não veio nem o menu, nem a lista, nem o formulário")
+        _back_out(d, 3)
+        return {"ok": False, "motivo": "sem_iniciar_sessao"}
 
     # a tela seguinte demora a montar (mais ainda logo depois de reiniciar o IG — 19/10 a segue14
     # falhou por ler cedo demais): espera a conta salva, o 'Usar outro perfil' ou o formulário
