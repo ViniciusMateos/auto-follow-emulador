@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.0] — 2026-10-24
+
+### Corrigido
+- fix: criar/trocar conta pelo seletor novo do IG 451 — botões renomeados ("Adicionar Instagram"/"Inicia sessão"), rola a folha quando tem muita conta e reconhece "Usar outro perfil"
+
 ## [1.1.0] — 2026-10-22
 
 ### Adicionado
