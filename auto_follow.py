@@ -931,6 +931,11 @@ CRED_ERRO_KW = ("palavra-passe estava incorreta", "palavra-passe que introduzist
                 "password you entered", "não foi possível encontrar a tua conta",
                 "nao foi possivel encontrar", "couldn't find your account",
                 "não encontrámos nenhuma conta", "user not found")
+# o @ não existe: o IG oferece uma conta PARECIDA ("É esta a tua conta?" sugerindo a segue10 pra uma
+# segue20 que nem foi criada — 27/10). NUNCA tocar "Continuar" ali: logaria a OUTRA conta
+CONTA_NAO_EXISTE_KW = ("é esta a tua conta", "é esta a sua conta", "is this your account",
+                       "não conseguimos encontrar uma conta", "nao conseguimos encontrar uma conta",
+                       "encontrámos uma parecida", "encontramos uma parecida")
 # conta bloqueada/suspensa (não adianta insistir)
 BLOQ_LOGIN_KW = ("suspendemos", "suspended", "foi desativada", "desativámos", "conta desativada",
                  "ação bloqueada", "acção bloqueada", "action blocked",
@@ -949,6 +954,9 @@ METODO_CODIGO_KW = ("e-mail", "email", "sms", "mensagem de texto", "text message
 AGUARDA_APROV_FORTE = ("a aguardar aprova", "aguardando aprova", "verifica as tuas notifica",
                        "verifique suas notifica", "verifique as notifica", "check your notifications",
                        "waiting for approval")
+# o outro aparelho NEGOU o pedido de acesso (ou o pedido venceu) — tela final, não adianta esperar
+APROV_REJEITADA_KW = ("pedido de acesso foi rejeitado", "pedido foi rejeitado", "rejeitado pelo outro dispositivo",
+                      "request was denied", "login request was denied", "solicitação foi recusada")
 # depois de pedir a aprovação: "verifica as notificações noutro dispositivo" (espera o toque no celular)
 AGUARDA_APROV_KW = ("verifica as notifica", "verifique as notifica", "check your notifications",
                     "aguardando aprova", "a aguardar aprova", "waiting for approval",
@@ -970,7 +978,7 @@ def desafio_humano(d):
         low = _dump(d).lower()
         if not any(k in low for k in DESAFIO_HUMANO_KW):
             return None
-        m = re.search(r"(?:tua conta|sua conta|your account),?\s+@?([a-z0-9._]{1,30})", low)
+        m = re.search(r"(?:tua conta|sua conta|your account|teu perfil|seu perfil|your profile),?\s+@?([a-z0-9._]{1,30})", low)
         return m.group(1) if m else "?"
     except Exception:
         return None
@@ -1308,7 +1316,22 @@ def _fechar_dialogos_pos(d, log):
             _log(log, "notificações: agora não")
             fez = True
             _sleep(1.0, 1.8)
+    # "Podes permitir o acesso aos teus contactos" (vem DEPOIS do login entrar — segue21 27/10: sem
+    # isto a tela ficava parada, o pós-login dava "tela desconhecida" com a conta JÁ logada) → pula;
+    # sem botão de pular reconhecido, volta
+    if "acesso aos teus contactos" in low or "acesso aos seus contatos" in low or "access your contacts" in low:
+        if not _tocar_botao(d, PULAR_ONBOARD_TXT, exato=False, preferir="baixo"):
+            d.press("back")
+        _log(log, "contactos: ignorar")
+        fez = True
+        _sleep(1.5, 2.5)
     return fez
+
+
+# botões de pular as telas de boas-vindas/permissões do IG (mesma lista do criar conta)
+PULAR_ONBOARD_TXT = ("Ignorar", "Agora não", "Agora nao", "Não agora", "Nao agora", "Mais tarde",
+                     "Ignorar por agora", "Saltar", "Não permitir", "Nao permitir", "Não, obrigado",
+                     "Não, obrigada", "Pular", "Skip", "Not now")
 
 
 def _tocar_entrar(d, log):
@@ -1332,13 +1355,34 @@ def _resolver_pos_login(d, user, get_codigo, log):
     cod_deadline = None
     aprov_pedida = False     # já escolheu "notificação noutro dispositivo"?
     metodo_tentou = 0
+    tela, parada_desde = None, time.time()
     while time.time() < fim:
         xml = _dump(d)
         low = xml.lower()
 
+        # 0) TELA PARADA que nenhum passo abaixo reconhece → não espera os 6 min do teto: reabre o IG
+        #    e desiste (a espera do código/aprovação é parada de propósito, fica de fora)
+        assin = _assinatura_tela(xml)
+        if assin != tela:
+            tela, parada_desde = assin, time.time()
+        elif not pediu_codigo and not aprov_pedida and time.time() - parada_desde > 75:
+            _log(log, f"falhou: tela desconhecida parada há mais de 1 min ({' / '.join(assin[:3]) or 'sem texto'})")
+            reabrir_ig(d, log, "tela desconhecida")
+            return {"ok": False, "motivo": "tela_desconhecida"}
+
+        # 0b) o @ não existe (IG sugere uma conta parecida) → aborta SEM tocar em "Continuar"
+        if any(k in low for k in CONTA_NAO_EXISTE_KW):
+            _log(log, f"falhou: o Instagram não achou a @{user} (sugeriu outra conta) — ela existe mesmo?")
+            reabrir_ig(d, log, "conta não encontrada")
+            return {"ok": False, "motivo": "conta_nao_existe"}
+
         # 1) erro de credencial → aborta
         if any(k in low for k in CRED_ERRO_KW):
-            _log(log, "falhou: o Instagram disse que a senha está incorreta — confere a senha salva em Contas")
+            # o QUE o IG disse (senha errada × conta não achada caem aqui) — só textos fora dos campos
+            campos = {e.get("text") for e in _edittexts(xml)}
+            disse = [t for t in _assinatura_tela(xml) if t not in campos and len(t) > 12][:2]
+            _log(log, "falhou: o Instagram disse que a senha está incorreta — confere a senha salva em Contas"
+                      + (f" (tela: {' / '.join(disse)})" if disse else ""))
             _back_out(d, 3)
             return {"ok": False, "motivo": "credenciais_invalidas"}
 
@@ -1380,6 +1424,19 @@ def _resolver_pos_login(d, user, get_codigo, log):
         # 2b) aparelho novo → "Escolhe uma forma de confirmar que és tu": pede a NOTIFICAÇÃO no outro
         #     aparelho (o celular aprova com um toque); sem ela, "Mostrar mais" → código por e-mail/SMS
         #     (cai no fluxo de código do passo 2, que o app manda pela chave da conta)
+        # aprovação NEGADA no outro aparelho → acabou (não adianta esperar os 5 min)
+        if any(k in low for k in APROV_REJEITADA_KW):
+            _log(log, f"falhou: o pedido de acesso da @{user} foi REJEITADO no outro aparelho — "
+                      "tenta conectar de novo e aprova o pedido que chegar")
+            reabrir_ig(d, log, "aprovação rejeitada")
+            return {"ok": False, "motivo": "aprovacao_rejeitada"}
+
+        # já pediu a notificação → NÃO pede de novo: cada toque gera um pedido NOVO e derruba o
+        # anterior (segue26 27/10: 4 pedidos em 17s, ele aprovou um velho e o IG deu "rejeitado")
+        if aprov_pedida and any(k in low for k in ESCOLHER_METODO_KW) and not _tela_de_codigo(xml):
+            time.sleep(5)
+            continue
+
         if any(k in low for k in ESCOLHER_METODO_KW) and not _tela_de_codigo(xml) and metodo_tentou < 4:
             metodo_tentou += 1
             if any(k in low for k in NOTIF_OUTRO_KW) and _tocar_botao(d, NOTIF_OUTRO_KW, exato=False, preferir="cima"):
@@ -1454,7 +1511,7 @@ def _resolver_pos_login(d, user, get_codigo, log):
         _sleep(2.0, 3.0)
 
     _log(log, "falhou: tempo esgotado no pós-login")
-    _back_out(d, 3)
+    reabrir_ig(d, log, "tempo esgotado")
     return {"ok": False, "motivo": "timeout_pos_login"}
 
 
