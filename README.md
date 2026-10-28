@@ -19,7 +19,14 @@ Com `simular=True` ele percorre tudo igual (chat, curtidores), mas não segue ni
 Também tem as funções de **conta** que o agente usa: listar as contas logadas (seletor do IG),
 trocar de conta (reabre o IG se sair dele e ignora telas de passagem), **logar conta nova pelo
 formulário** (com código pelo app, ou aprovação no seu celular quando o aparelho é novo) e
-responder os pedidos de permissão do Android.
+responder os pedidos de permissão do Android. No login: pede a aprovação no outro aparelho **uma
+vez só** (pedido repetido derruba o anterior) e entende o "pedido rejeitado"; "É esta a tua conta?"
+vira conta inexistente (sem tocar em "Continuar"); pula a tela de contatos; e se ficar mais de 1 min
+numa tela que não conhece, reabre o IG e desiste em vez de segurar a fila.
+
+**Sair do aparelho** — `sair_conta(d, nome)`: Definições e atividade → "Terminar sessão" →
+confirma, sem guardar o login, e confere no seletor que a conta sumiu (base do bot Remover Contas).
+**Saída de emergência** — `reabrir_ig(d)`: fecha e abre o app do zero (as contas continuam logadas).
 
 **Verificação humana** ("confirma que és uma pessoa"): `resolver_desafio()` encerra a sessão da
 conta presa (senão o IG do emulador trava pra todas) e chama `AO_DESAFIO(conta)` — o agente usa
