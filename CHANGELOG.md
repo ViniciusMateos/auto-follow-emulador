@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.0] — 2026-10-27
+
+### Adicionado
+- feat: `sair_conta()` — tira a conta do aparelho (Definições e atividade → Terminar sessão, sem guardar o login): espera a folha do menu assentar, confere que abriu as Definições, tenta até 3x e confere no seletor que a conta sumiu
+- feat: `reabrir_ig()` — saída de emergência (fecha e abre o app); o `garantir_perfil` usa na "tela presa"
+
+### Corrigido
+- fix: o login não trava mais em tela desconhecida — mais de 1 min parado numa tela que ele não conhece → reabre o IG e desiste (antes segurava a fila 6 min)
+- fix: "É esta a tua conta?" (o @ não existe) vira conta inexistente, sem tocar em "Continuar"
+- fix: pula a tela "acesso aos teus contactos" que vem depois do login entrar
+- fix: pede a aprovação no outro aparelho UMA vez só (pedido repetido derrubava o anterior → "rejeitado") e entende o "pedido de acesso foi rejeitado"
+- fix: `desafio_humano` lê o @ também em "...usares o teu perfil, <conta>"; senha recusada loga a mensagem exata do IG
+
+### Documentação
+- docs: README com sair da conta e o login mais esperto
+
 ## [1.2.0] — 2026-10-24
 
 ### Corrigido
