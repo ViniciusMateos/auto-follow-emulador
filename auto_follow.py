@@ -276,6 +276,28 @@ def garantir_app(d, log=None):
         return True
 
 
+def reabrir_ig(d, log=None, motivo=""):
+    """SAÍDA DE EMERGÊNCIA: fecha e abre o Instagram do zero. Pra quando o bot caiu numa tela que
+    não conhece (ou o fluxo falhou no meio) — as contas continuam logadas (a sessão é do app).
+    Devolve True se reabriu."""
+    _log(log, "fechando e abrindo o Instagram" + (f" ({motivo})" if motivo else "") + "…")
+    try:
+        d.app_stop(IG_PKG)
+        _sleep(1.0, 2.0)
+        d.app_start(IG_PKG, use_monkey=True)
+        _sleep(3.0, 5.0)
+        return True
+    except Exception as e:
+        _log(log, f"não consegui reabrir o IG: {e}")
+        return False
+
+
+def _assinatura_tela(xml):
+    """Os textos da tela (sem o relógio do Android) — se não muda, a tela está PARADA."""
+    return tuple(t for t in re.findall(r'text="([^"]+)"', xml or "")
+                 if not re.fullmatch(r"\d{1,2}:\d{2}", t.strip()))
+
+
 def garantir_perfil(d, log=None):
     """Deixa o IG na aba de PERFIL de forma AUTOMÁTICA: abre o app se preciso e navega pelas abas
     (toca em profile_tab; se cair numa tela interna/diálogo, volta) até o cabeçalho do perfil
@@ -303,14 +325,7 @@ def garantir_perfil(d, log=None):
             _sleep(1.2, 2.0)
         # não chegou no perfil → na 1ª rodada, reinicia o IG do zero pra sair da tela presa e retenta
         if tentativa == 0:
-            try:
-                _log(log, "tela presa — reiniciando o IG pra sair…")
-                d.app_stop(IG_PKG)
-                _sleep(1.0, 2.0)
-                d.app_start(IG_PKG, use_monkey=True)
-                _sleep(3.0, 5.0)
-            except Exception:
-                pass
+            reabrir_ig(d, log, "tela presa")
     try:
         return d(resourceId=rid(ACC_TITLE)).exists
     except Exception:
@@ -440,6 +455,99 @@ def trocar_conta(d, nome, log):
     ok = (agora == nome)
     _log(log, f"troca pra {nome}: {'OK' if ok else 'ficou em ' + (agora or '?')}")
     return ok
+
+
+# ───────────── sair da conta (tirar do aparelho) ─────────────
+# Caminho REAL (pt-PT, confirmado ao vivo 27/10/2026): perfil → ≡ "Opções" → "Definições e atividade"
+# → rola até o FIM → "Terminar sessão" → diálogo "Terminar sessão da tua conta?" (primary_button
+# "Terminar sessão" / negative_button "Cancelar"). Só sai da conta ATIVA; o IG cai na próxima logada.
+# Pegadinha: o "Terminar sessão" da lista NÃO casa com text= exato (acento em outra forma Unicode)
+# → casar pelo PREFIXO "Terminar". Libera uma vaga no teto de 10 contas por aparelho.
+def sair_conta(d, nome, log=None):
+    """Tira a conta `nome` do aparelho: troca pra ela, abre Definições, rola até "Terminar sessão",
+    confirma e recusa o "guardar informações de início de sessão" (sai de vez, sem login salvo).
+    No fim confere no seletor que ela sumiu. Devolve {"ok": bool, "motivo": str}. NUNCA levanta."""
+    nome = (nome or "").strip().lstrip("@")
+    try:
+        if not nome:
+            return {"ok": False, "motivo": "sem_usuario"}
+        if not trocar_conta(d, nome, log):
+            if nome.lower() not in {c.lower() for c in listar_contas_logadas(d)}:
+                _log(log, f"@{nome} já não está no aparelho")
+                return {"ok": True, "motivo": "ja_fora"}
+            return {"ok": False, "motivo": "nao_trocou"}
+        # Definições pode demorar ~6s pra aparecer no menu e o toque durante a animação da folha se
+        # perde → 3 tentativas, cada uma a partir do perfil da conta (nunca "back" às cegas: 3 backs
+        # fechavam o IG — lote de 27/10)
+        motivo = "sem_menu"
+        for tentativa in range(3):
+            if tentativa:
+                garantir_perfil(d, log)
+            # menu ≡ do perfil (só existe no PRÓPRIO perfil, onde o trocar_conta deixou)
+            if conta_atual(d) != nome or not d(description="Opções").wait(timeout=5):
+                motivo = "sem_menu"
+                continue
+            d(description="Opções").click()
+            defin = d(textStartsWith="Definições e atividade")
+            if not defin.wait(timeout=12):
+                motivo = "sem_definicoes"
+                continue
+            # a folha SOBE animando e itens carregam depois empurrando a lista: tocar antes de
+            # assentar caía em outro item (Arquivo/Atividade, listas sem fim → 15 swipes sem achar o
+            # "Terminar"; segue10, run-464) → espera a posição parar de mudar
+            pos = None
+            for _ in range(8):
+                _sleep(0.5, 0.7)
+                agora = (defin.info.get("bounds") or {}) if defin.exists else None
+                if agora and agora == pos:
+                    break
+                pos = agora
+            defin.click()
+            _sleep(3.0, 4.0)
+            # confere que abriu o Definições mesmo (não outra tela do menu)
+            if not any(d(textStartsWith=t).exists for t in ("Privacidade da conta", "Contas bloqueadas",
+                                                             "Quem pode ver", "Terminar")):
+                _log(log, "o toque não abriu as Definições — tentando de novo")
+                motivo = "abriu_outra_tela"
+                continue
+            sair = d(textStartsWith="Terminar")
+            for _ in range(15):
+                if sair.exists:
+                    break
+                d.swipe(450, 1350, 450, 350, 0.3)
+                _sleep(1.0, 1.4)
+            if not sair.exists:
+                motivo = "sem_terminar_sessao"
+                continue
+            sair.click()
+            conf = d(resourceId=rid("primary_button"))
+            if not conf.wait(timeout=6) or not (conf.info.get("text") or "").startswith("Terminar"):
+                motivo = "sem_confirmacao"
+                continue
+            break
+        else:
+            garantir_perfil(d, log)
+            return {"ok": False, "motivo": motivo}
+        conf.click()
+        _log(log, f"@{nome}: terminei a sessão")
+        # pós-logout: "guardar informações de início de sessão?" → AGORA NÃO (sai sem deixar login
+        # salvo no aparelho). Depois o IG cai na próxima conta logada (ou no login, se era a última).
+        for _ in range(8):
+            _sleep(1.5, 2.2)
+            low = _dump(d).lower()
+            if any(k in low for k in SALVAR_LOGIN_FRASES) or ("guardar" in low and "sess" in low):
+                if _tocar_botao(d, AGORA_NAO_TXT, exato=True):
+                    _log(log, "guardar login: agora não")
+                    continue
+            if d(resourceId=rid(PROFILE_TAB)).exists:
+                break
+        garantir_perfil(d, log)
+        if nome.lower() in {c.lower() for c in listar_contas_logadas(d)}:
+            return {"ok": False, "motivo": "continua_no_seletor"}
+        return {"ok": True, "motivo": "saiu"}
+    except Exception as e:
+        _log(log, f"erro ao sair de @{nome}: {e}")
+        return {"ok": False, "motivo": f"erro:{e}"}
 
 
 # ───────────── enumeração das contas logadas (seletor multi-conta) ─────────────
