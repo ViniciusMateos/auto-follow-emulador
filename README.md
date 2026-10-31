@@ -29,8 +29,15 @@ confirma, sem guardar o login, e confere no seletor que a conta sumiu (base do b
 **Saída de emergência** — `reabrir_ig(d)`: fecha e abre o app do zero (as contas continuam logadas).
 
 **Verificação humana** ("confirma que és uma pessoa"): `resolver_desafio()` encerra a sessão da
-conta presa (senão o IG do emulador trava pra todas) e chama `AO_DESAFIO(conta)` — o agente usa
-esse gancho pra marcar a conta como bloqueada e mandar um push.
+conta presa (senão o IG do emulador trava pra todas) e chama `AO_DESAFIO(conta, tipo)` — o agente
+usa esse gancho pra marcar a conta como bloqueada e mandar um push. Vale também pra conta
+**suspensa** ("suspendemos o teu perfil": o @ é lido no Menu → "Terminar sessão de <@>", `tipo` =
+"suspensa"). A tela de **cookies** ("Permitir a utilização de cookies") é respondida com
+`fechar_cookies()` → "Recusar cookies opcionais". O `garantir_perfil` também resolve essas telas.
+
+Se a tela se redesenhar no meio da troca de conta (StaleObject, ex. logo depois de reabrir o IG), a
+troca tenta de novo uma vez. No follow, se as curtidas do post não aparecem, ele abre o post de
+novo antes de pular.
 
 ## Onde roda
 
