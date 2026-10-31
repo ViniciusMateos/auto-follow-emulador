@@ -14,6 +14,18 @@ fica logada no app de verdade, a sessão não cai.
 5. Para na hora se o Instagram mostrar bloqueio de ação; o agente aborta o lote depois de N
    soft-blocks seguidos e deixa a conta que tomou soft-block descansando (tudo pelo modo).
 
+**Nunca pula um post.** Se as curtidas de um post não abrem, a conta para ali (`post_travado`) e a
+próxima do lote tenta o mesmo post; só depois de 3 contas diferentes falharem nele a frota desiste
+dele, marca e segue (`posts_falhas.json`; o print da tela fica em `logs/curtidas_falha/`). Antes ele
+pulava pro de baixo, que ganhava ❤, e o pulado ficava pra trás pra sempre.
+
+O registro (`posts_feitos.json`) guarda cada post por autor + começo da legenda; post sem legenda só
+conta como feito se ele mesmo foi registrado (não casa com outro post do mesmo autor).
+
+**Post inicial** (`inicio` nos params): sobe em passo controlado até o post daquele autor e faz tudo
+que estiver sem ❤ dali pra baixo, mesmo com algum ❤ solto no meio. Se não acha o post, não segue
+ninguém.
+
 Com `simular=True` ele percorre tudo igual (chat, curtidores), mas não segue ninguém nem marca o post.
 
 Também tem as funções de **conta** que o agente usa: listar as contas logadas (seletor do IG),
@@ -37,7 +49,11 @@ usa esse gancho pra marcar a conta como bloqueada e mandar um push. Vale também
 
 Se a tela se redesenhar no meio da troca de conta (StaleObject, ex. logo depois de reabrir o IG), a
 troca tenta de novo uma vez. No follow, se as curtidas do post não aparecem, ele abre o post de
-novo antes de pular.
+novo antes de desistir.
+
+Conta **restrita** de DM ("Confirma a tua identidade para enviares uma mensagem" ou "Não podes
+enviar mensagens"): o chat abre sem a caixa de escrever, mas os posts aparecem e ela segue normal.
+O `em_thread` reconhece os dois layouts (o novo tem o título em `header_title`).
 
 ## Onde roda
 
