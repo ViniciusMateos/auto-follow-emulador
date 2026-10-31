@@ -307,6 +307,9 @@ def garantir_perfil(d, log=None):
     não há como o agente sair sozinho; o chamador cai no fallback.) Devolve True se o perfil abriu."""
     if not garantir_app(d, log):
         return False
+    # conta presa em captcha/SUSPENSA na frente do IG: reabrir o app volta pra MESMA tela (30/10 o
+    # leitor ficou reabrindo o IG a cada 90s na suspensão da segue18) → tira a conta e segue
+    resolver_desafio(d, log)
     for tentativa in range(2):
         for _ in range(6):
             try:
@@ -965,6 +968,12 @@ AGUARDA_APROV_KW = ("verifica as notifica", "verifique as notifica", "check your
 DESAFIO_HUMANO_KW = ("confirma que és uma pessoa", "confirme que você é uma pessoa",
                      "confirme que voce e uma pessoa", "confirm you're a human", "confirm that you're a human",
                      "confirm you are a human")
+# conta SUSPENSA pelo IG (30/10, segue18: "brechó quase nada, suspendemos o teu perfil" — integridade
+# da conta, 180 dias pra recorrer). Mesma ChallengeActivity com "Menu" → "Terminar sessão de <conta>",
+# e também trava o emulador pra todas as contas. A tela não mostra o @ (só o nome de exibição).
+SUSPENSA_KW = ("suspendemos o teu perfil", "suspendemos a tua conta", "suspendemos o seu perfil",
+               "suspendemos sua conta", "suspendemos seu perfil", "we suspended your account",
+               "we suspended your profile", "data da suspensão")
 
 
 # o agente define: callback(conta) → push "conta com bloqueio" + marca "bloqueada" no backend
@@ -984,44 +993,114 @@ def desafio_humano(d):
         return None
 
 
-def resolver_desafio(d, log=None):
-    """Se uma conta caiu em verificação humana: encerra a sessão dela (destrava as outras), avisa via
-    AO_DESAFIO e devolve True — quem chamou segue com as contas livres (22/10, segue13)."""
-    conta = desafio_humano(d)
-    if not conta:
+COOKIES_KW = ("permitir a utilização de cookies", "permitir o uso de cookies", "allow the use of cookies")
+COOKIES_BOTOES = ("Recusar cookies opcionais", "Recusar cookies adicionais", "Decline optional cookies",
+                  "Permitir todos os cookies", "Allow all cookies")
+
+
+def fechar_cookies(d, log=None):
+    """31/10: a tela "Permitir a utilização de cookies pelo Instagram?" (InstagramConsentFlowHostActivity,
+    apareceu pra segue30) fica na frente do IG inteiro — o agente não achava o seletor nem lia as contas
+    e a segue26 não publicava story. Responde "Recusar cookies opcionais" (o IG segue funcionando).
+    True se tratou a tela. Nunca levanta."""
+    try:
+        act = (d.app_current() or {}).get("activity") or ""
+        if "ConsentFlow" not in act and not any(k in _dump(d).lower() for k in COOKIES_KW):
+            return False
+        for _ in range(3):
+            for txt in COOKIES_BOTOES:
+                el = d(text=txt)
+                if not el.exists:
+                    el = d(description=txt)
+                if el.exists:
+                    b = el.info.get("bounds") or {}
+                    d.click((b["left"] + b["right"]) // 2, (b["top"] + b["bottom"]) // 2)
+                    _sleep(2.0, 3.0)
+                    _log(log, f"tela de cookies do IG — toquei em '{txt}'")
+                    return True
+            W, H = d.window_size()
+            d.swipe(W // 2, int(H * 0.8), W // 2, int(H * 0.3), 0.3)   # botão abaixo da dobra
+            _sleep(0.8, 1.2)
+    except Exception:
+        pass
+    return False
+
+
+def conta_suspensa(d):
+    """A tela da frente é a de conta SUSPENSA pelo IG? (o @ só aparece no Menu — ver sair_do_desafio)"""
+    try:
+        low = _dump(d).lower()
+        return any(k in low for k in SUSPENSA_KW)
+    except Exception:
         return False
-    _log(log, f"!! @{conta} caiu em verificação humana (\"confirma que és uma pessoa\") — tirando do "
-              f"emulador e seguindo com as contas livres")
-    sair_do_desafio(d, log)
-    if AO_DESAFIO and conta != "?":
+
+
+def resolver_desafio(d, log=None):
+    """Se uma conta caiu em verificação humana OU foi SUSPENSA: encerra a sessão dela (destrava as
+    outras), avisa via AO_DESAFIO e devolve True — quem chamou segue com as contas livres (22/10,
+    segue13; suspensão 30/10, segue18)."""
+    fechar_cookies(d, log)   # tela de cookies na frente de tudo (31/10) — responde e segue
+    suspensa = conta_suspensa(d)
+    conta = None if suspensa else desafio_humano(d)
+    if not (suspensa or conta):
+        return False
+    if suspensa:
+        _log(log, "!! uma conta foi SUSPENSA pelo Instagram (\"suspendemos o teu perfil\") — tirando do "
+                  "emulador e seguindo com as contas livres")
+    else:
+        _log(log, f"!! @{conta} caiu em verificação humana (\"confirma que és uma pessoa\") — tirando do "
+                  f"emulador e seguindo com as contas livres")
+    saiu = sair_do_desafio(d, log)
+    if isinstance(saiu, str) and saiu:
+        conta = saiu                       # o @ lido no "Terminar sessão de <conta>" do Menu
+    if AO_DESAFIO and conta and conta != "?":
         try:
-            AO_DESAFIO(conta)
+            AO_DESAFIO(conta, "suspensa" if suspensa else "desafio")
+        except TypeError:                  # callback antigo, só com a conta
+            try:
+                AO_DESAFIO(conta)
+            except Exception:
+                pass
         except Exception:
             pass
     return True
 
 
 def sair_do_desafio(d, log=None):
-    """Na tela "Confirma que és uma pessoa": Menu → "Terminar sessão de <conta>" → "Terminar sessão".
-    Tira a conta do aparelho pra o IG voltar pra outra conta logada. True se saiu."""
-    try:
-        if not d(description="Menu").exists:
-            return False
-        d(description="Menu").click(); _sleep(1.8, 2.6)
+    """Na tela de desafio/suspensão: Menu → "Terminar sessão de <conta>" → "Terminar sessão". Tira a
+    conta do aparelho pra o IG voltar pra outra conta logada. Devolve o @ da conta que saiu (lido no
+    item do Menu), True se saiu sem ler o @, ou False. O Menu é bloks e às vezes demora a abrir (na
+    suspensão, 30/10, o 1º toque não abriu nada) → espera até ~8s e toca de novo uma vez."""
+    def _item():
         el = d(textStartsWith="Terminar sessão de")
+        return el if el.exists else d(descriptionStartsWith="Terminar sessão de")
+    try:
+        el = _item()
+        if not el.exists:                  # o Menu ainda não está aberto
+            if not d(description="Menu").exists:
+                return False
+            for _ in range(2):
+                d(description="Menu").click()
+                fim = time.time() + 8
+                while time.time() < fim and not _item().exists:
+                    time.sleep(1.0)
+                if _item().exists:
+                    break
+            el = _item()
         if not el.exists:
-            el = d(descriptionStartsWith="Terminar sessão de")
-        if not el.exists:
-            _back_out(d, 1)
-            return False
+            return False                   # NÃO aperta voltar: na suspensão o voltar fecha o IG
+        rot = (el.info.get("text") or el.info.get("contentDescription") or "")
+        m = re.search(r"terminar sessão de\s+@?([A-Za-z0-9._]{1,30})", rot, re.I)
+        conta = m.group(1) if m else ""
         el.click(); _sleep(1.8, 2.6)
         ok = d(text="Terminar sessão")
         if not ok.exists:
             ok = d(description="Terminar sessão")
         if ok.exists:
             ok.click(); _sleep(4.0, 6.0)
-        _log(log, "tirei a conta do aparelho (sessão encerrada) pra não travar os outros bots")
-        return True
+        _log(log, f"tirei {('@' + conta) if conta else 'a conta'} do aparelho (sessão encerrada) pra não "
+                  f"travar os outros bots")
+        return conta or True
     except Exception:
         return False
 
