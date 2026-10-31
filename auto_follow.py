@@ -2367,19 +2367,23 @@ def ir_para_fronteira(d, log, max_scrolls=400, reg=None, parar_flag=None):
     return None
 
 
-def ir_para_autor(d, autor, log, max_scrolls=40):
+def ir_para_autor(d, autor, log, max_scrolls=250):
     """Início EXPLÍCITO: vai ao fim e sobe até achar o post do `autor`, deixando-o na tela pra
-    o loop começar dali. Determinístico (não depende de reação). True se achou."""
+    o loop começar dali. Determinístico (não depende de reação). True se achou.
+    Sobe em passo CONTROLADO: o arremesso passava direto pelo post (31/10)."""
     autor = autor.strip().lstrip("@")
     _log(log, f"procurando o post de '{autor}' pra começar…")
     _ir_ao_fundo(d, log)
     _sleep(1.0, 1.5)
     for i in range(max_scrolls):
+        _assentar(d)
         posts, _blk = posts_na_tela(d)
         if any(autor in (p["autor"] or "") for p in posts if p["autor"] != "?"):
             _log(log, f"achei o post de {autor} (scroll {i}) — começando por ele")
             return True
-        if not _subir_insistindo(d):
+        if i and i % 25 == 0:
+            _log(log, f"  ainda subindo atrás de {autor}… (scroll {i})")
+        if not _subir_ctrl(d):
             _log(log, f"cheguei no topo do histórico sem achar '{autor}'")
             return False
     _log(log, f"não achei '{autor}' em {max_scrolls} scrolls")
@@ -2545,7 +2549,8 @@ def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follow
         return {"ok": False, "motivo": "thread_nao_abriu", "follows": 0, "posts": 0}
 
     if inicio:
-        ir_para_autor(d, inicio, log)
+        if not ir_para_autor(d, inicio, log):   # não achou: NÃO começa num post qualquer do meio
+            return {"ok": False, "motivo": "post_inicial_nao_achado", "follows": 0, "posts": 0}
     else:
         # vai ao fundo e SOBE verificando as reações até o ÚLTIMO REAGIDO (a fronteira). Daí processa
         # pra BAIXO, em ordem de envio. NUNCA pega o 1º post do fundo sem antes subir e conferir.
@@ -2587,7 +2592,9 @@ def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follow
             if not abrir_thread(d, nome_chat, log):
                 return {"ok": False, "motivo": "thread_nao_abriu", "follows": total_follows, "posts": posts_feitos}
             if inicio:
-                ir_para_autor(d, inicio, log)
+                if not ir_para_autor(d, inicio, log):
+                    return {"ok": False, "motivo": "post_inicial_nao_achado", "follows": total_follows,
+                            "posts": posts_feitos}
             elif ir_para_fronteira(d, log, reg=reg_feitos, parar_flag=parar_flag) is None:   # re-verifica a fronteira
                 return {"ok": False, "motivo": "fronteira_nao_achada", "follows": total_follows, "posts": posts_feitos}
             continue
@@ -2609,8 +2616,11 @@ def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follow
         # é passado (já feito pela frota) e NÃO é reprocessado — mesmo que a reação não tenha colado.
         # Só processa o que está ABAIXO da fronteira. Sem nenhum feito na tela = já passei a fronteira
         # (estou no território novo) → processo todos os pendentes visíveis.
-        y_fronteira = max((p["y1"] for p in posts
-                           if p["reagido"] or _feito_recente(reg_feitos, p["chave"])), default=None)
+        # Com POST INICIAL não vale: o ponto de partida é explícito e tudo sem ❤ dali pra baixo é
+        # pendente. Um ❤ solto abaixo de pendentes (o da segue22 na anwsbys, 31/10) escondia eles.
+        y_fronteira = None if inicio else max(
+            (p["y1"] for p in posts if p["reagido"] or _feito_recente(reg_feitos, p["chave"])),
+            default=None)
         # p["inteiro"]: card com rodapé escondido NÃO é pendente ainda (o ❤ pode estar embaixo da
         # caixa de escrever) — o _descer_ctrl traz ele inteiro pra tela na próxima volta.
         pendentes = [p for p in posts if not p["reagido"] and p["ehpost"] and p["inteiro"]
