@@ -373,6 +373,20 @@ def conta_atual(d):
 
 
 def trocar_conta(d, nome, log):
+    """Troca pra conta `nome` (ver _trocar_conta). Se a tela se redesenhar no meio de um toque
+    (StaleObjectException — ex: logo depois de reabrir o IG, o cabeçalho do perfil some e volta),
+    espera e tenta de novo UMA vez em vez de derrubar a conta do lote (segue20 no story, 29/10)."""
+    for tent in range(2):
+        try:
+            return _trocar_conta(d, nome, log)
+        except Exception as e:
+            if tent or "StaleObject" not in str(e):
+                raise
+            _log(log, "a tela mudou no meio da troca de conta — tentando de novo")
+            _sleep(2.0, 3.0)
+
+
+def _trocar_conta(d, nome, log):
     """Troca pra conta `nome` pelo seletor nativo do IG (perfil → nome → lista → conta).
     Todas as contas têm que estar logadas no device. Devolve True se ficou nela."""
     nome = nome.strip()
