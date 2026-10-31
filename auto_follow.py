@@ -2452,20 +2452,13 @@ def _feito_recente(reg, chave):
     caption_title às vezes vem VAZIO no dump, ex.: legenda começando com aspas).
     - registro com legenda cobre SÓ aquele post;
     - registro só-autor NÃO cobre post com legenda (senão 1 post feito escondia os outros do mesmo
-      autor — gui_lomonaco x3, 19/10). Post sem legenda lida: qualquer registro do autor cobre.
+      autor — gui_lomonaco x3, 19/10);
+    - post sem legenda só é coberto pelo registro só-autor. Antes qualquer post registrado do autor
+      cobria: o post NOVO da freireacc (sem legenda, 30/10) bateu com o dela de 21/10, virou a
+      "fronteira" no fim do chat e a frota inteira deu +0 (run-539).
     O registro é a 2ª proteção: a 1ª é o ❤ (gruda e é lido nos 2 layouts desde 19/10)."""
-    agora = time.time()
-    chave = chave or ""
-
-    def _ok(k):
-        v = reg.get(k)
-        return bool(v) and (agora - v) < _FEITOS_JANELA
-
-    if _ok(chave):
-        return True
-    if "|" in chave:
-        return False
-    return any(k.startswith(chave + "|") and _ok(k) for k in reg)
+    v = reg.get(chave or "")
+    return bool(v) and (time.time() - v) < _FEITOS_JANELA
 
 
 def _marcar_feito(reg, autor):
