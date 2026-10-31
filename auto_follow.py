@@ -2467,10 +2467,70 @@ def _marcar_feito(reg, autor):
         _feitos_salvar(reg)
 
 
+# ─── posts que travaram (curtidas não abriram) — por conta ───
+# Pular o post e seguir pros de baixo deixava BURACO: os de baixo ganhavam ❤, a fronteira passava
+# por cima e o pulado nunca mais era feito (samp.isa, r4vena._, elisamidt… 29-30/10). Agora a conta
+# PARA no post travado e a próxima tenta o mesmo; só depois de FALHAS_DESISTE contas diferentes a
+# frota desiste dele (marca e segue). {chave: {conta: ts}}
+_FALHAS_PATH = os.path.join(os.path.dirname(_FEITOS_PATH), "posts_falhas.json")
+FALHAS_DESISTE = 3
+_FALHAS_JANELA = 3 * 24 * 3600
+
+
+def _falha_registrar(chave, conta):
+    """Anota que `conta` não conseguiu fazer o post. Devolve quantas contas diferentes já falharam
+    nele (dentro da janela)."""
+    try:
+        with open(_FALHAS_PATH, "r", encoding="utf-8") as f:
+            reg = json.load(f)
+    except Exception:
+        reg = {}
+    agora = time.time()
+    contas = {c: t for c, t in (reg.get(chave) or {}).items() if agora - t < _FALHAS_JANELA}
+    contas[conta or f"?{int(agora)}"] = agora
+    reg[chave] = contas
+    try:
+        with open(_FALHAS_PATH, "w", encoding="utf-8") as f:
+            json.dump(reg, f)
+    except Exception:
+        pass
+    return len(contas)
+
+
+def _falha_limpar(chave):
+    try:
+        with open(_FALHAS_PATH, "r", encoding="utf-8") as f:
+            reg = json.load(f)
+        if reg.pop(chave, None) is not None:
+            with open(_FALHAS_PATH, "w", encoding="utf-8") as f:
+                json.dump(reg, f)
+    except Exception:
+        pass
+
+
+_DIAG_CURT = os.path.join(os.path.dirname(_FEITOS_PATH), "logs", "curtidas_falha")
+
+
+def _salvar_diag_curtidas(d, autor):
+    """Print + dump da tela quando as curtidas do post não abrem (pra ver o que o IG mostrou).
+    Guarda as 40 últimas em logs/curtidas_falha/. Nunca levanta."""
+    try:
+        os.makedirs(_DIAG_CURT, exist_ok=True)
+        nome = re.sub(r"[^A-Za-z0-9._-]", "_", autor or "x")[:30]
+        base = os.path.join(_DIAG_CURT, f"{time.strftime('%Y%m%d_%H%M%S')}_{nome}")
+        d.screenshot(base + ".png")
+        with open(base + ".xml", "w", encoding="utf-8") as f:
+            f.write(d.dump_hierarchy())
+        for a in sorted(os.listdir(_DIAG_CURT))[:-80]:
+            os.remove(os.path.join(_DIAG_CURT, a))
+    except Exception:
+        pass
+
+
 # ─────────────────────────── orquestração ─────────────────────
 def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follows_run=0,
               delay_post=(90, 240), entre=(1, 3), pausa_cada=0, pausa_longa=(20, 60),
-              inicio=None, parar_flag=None, simular=False):
+              inicio=None, parar_flag=None, simular=False, conta=None):
     """Fluxo: entra no chat → sobe até a fronteira (último reagido) → processa os posts SEM
     reação em ordem de envio (mais antigo primeiro) → ao seguir TODOS os curtidores, reage ❤️
     pra marcar. Para na hora se bloquear. Devolve dict com o saldo.
@@ -2493,6 +2553,26 @@ def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follow
             return {"ok": False, "motivo": "fronteira_nao_achada", "follows": 0, "posts": 0}
     recup = 0
     ultimo_autor, falhas_post = None, 0
+
+    def _travou(post, oque):
+        """Post que não deu pra concluir: a conta PARA aqui (não pula pro de baixo — ver
+        _falha_registrar). Na FALHAS_DESISTE-ésima conta diferente, desiste do post: registra, marca
+        ❤ e devolve None pro loop seguir."""
+        if simular:
+            feitos_run.add(post["chave"])
+            return None
+        n = _falha_registrar(post["chave"], conta)
+        if n >= FALHAS_DESISTE:
+            _log(log, f"  {post['autor']}: {oque} em {n} contas diferentes — desisto dele, marco e sigo")
+            feitos_run.add(post["chave"])
+            _marcar_feito(reg_feitos, post["chave"])
+            _falha_limpar(post["chave"])
+            marcar_post(d, log, post["chave"])
+            return None
+        _log(log, f"  {post['autor']}: {oque} — paro esta conta aqui pra não deixar o post pra trás "
+                  f"(a próxima conta tenta ele; {n}/{FALHAS_DESISTE})")
+        return {"ok": True, "motivo": "post_travado", "follows": total_follows, "posts": posts_feitos}
+
     while True:
         if parar_flag and parar_flag():
             return {"ok": True, "motivo": "parado", "follows": total_follows, "posts": posts_feitos}
@@ -2564,9 +2644,12 @@ def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follow
         if not lc.wait(timeout=6):
             # pode ser post sem curtidas OU a gente nem abriu o post (tela errada). Só marca se
             # continuarmos no post certo; senão a recuperação do topo cuida no próximo giro.
-            _log(log, "  não abriu as curtidas — pulando")
+            _log(log, "  não abriu as curtidas")
+            _salvar_diag_curtidas(d, post["autor"])
             d.press("back"); _sleep(1.2, 2.0)
-            feitos_run.add(post["chave"])   # não reprocessa neste run (sem persistir: pode ser transitório)
+            r = _travou(post, "as curtidas não abriram")
+            if r:
+                return r
             continue
         lc.click()
         _sleep(2.0, 3.0)
@@ -2582,8 +2665,10 @@ def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follow
             else:
                 ultimo_autor, falhas_post = post["chave"], 1
             if falhas_post >= 3:
-                _log(log, f"  {post['autor']} não abre há 3x — pulo")
-                feitos_run.add(post["chave"]); falhas_post = 0
+                falhas_post = 0
+                r = _travou(post, "a folha de curtidores não abriu 3x")
+                if r:
+                    return r
             continue
 
         restante = (limite_follows_run - total_follows) if limite_follows_run else 0
@@ -2614,18 +2699,22 @@ def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follow
             elif viu:
                 feitos_run.add(post["chave"])
                 _marcar_feito(reg_feitos, post["chave"])   # REGISTRO = fonte da verdade (persiste)
+                _falha_limpar(post["chave"])
                 if marcar_post(d, log, post["chave"]):     # ❤️ best-effort (marcador visual na frota)
                     _log(log, f"  ❤️ marcado ({post['autor']})")
                 else:
                     _log(log, f"  registrado ({post['autor']}) — não reprocessa")
                 posts_feitos += 1
             else:
-                _log(log, "  curtidas não carregaram — não concluo (tenta no próximo run)")
+                r = _travou(post, "as curtidas não carregaram")
+                if r:
+                    return r
         elif motivo in ("limite", "parado"):
             return {"ok": True, "motivo": motivo, "follows": total_follows, "posts": posts_feitos}
         elif motivo == "perdido":
-            feitos_run.add(post["chave"])   # move pro próximo neste run; NÃO persiste (post não concluído)
-            _log(log, "  perdi a folha no meio — sigo pro próximo sem concluir")
+            r = _travou(post, "perdi a folha de curtidores no meio")
+            if r:
+                return r
 
         if max_posts and posts_feitos >= max_posts:
             return {"ok": True, "motivo": "max_posts", "follows": total_follows, "posts": posts_feitos}
