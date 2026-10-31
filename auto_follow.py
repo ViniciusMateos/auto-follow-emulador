@@ -1782,12 +1782,24 @@ def em_thread(d, nome_chat=None):
     """True se estamos DENTRO da conversa certa (caixa de escrever presente + título bate).
     O título da thread é 'thread_title' (header_title é da inbox). Tolerante a atraso do título.
     Conta RESTRITA (segue13): o chat abre SEM caixa de escrever (no lugar vem o aviso), mas os posts
-    aparecem e dá pra seguir normal — aí vale o aviso + título/nome do chat no cabeçalho."""
+    aparecem e dá pra seguir normal — aí vale o aviso + título/nome do chat no cabeçalho.
+    Layout novo (segue21): a caixa vira 'disabled_composer_text_container' ("Confirma a tua
+    identidade para enviares uma mensagem") e o título vem em 'header_title' do cabeçalho."""
     if not d(resourceId=rid("row_thread_composer_edittext")).exists:
-        if not conta_restrita(d):
+        desabilitada = (d(resourceId=rid("disabled_composer_text_container")).exists
+                        or d(resourceId=rid("thread_disabled_title")).exists)
+        if not desabilitada and not conta_restrita(d):
             return False
-        th = d(resourceId=rid("thread_title"))
-        return th.exists or (bool(nome_chat) and d(textContains=nome_chat[:12]).exists)
+        if not nome_chat:
+            return True
+        for tid in ("thread_title", "header_title"):
+            th = d(resourceId=rid(tid))
+            try:
+                if th.exists and nome_chat[:12] in (th.info.get("text") or ""):
+                    return True
+            except Exception:
+                pass
+        return d(textContains=nome_chat[:12]).exists
     if nome_chat:
         th = d(resourceId=rid("thread_title"))
         try:
@@ -1802,6 +1814,7 @@ def em_thread(d, nome_chat=None):
 RESTRITA_KW = (
     "podes enviar mensagens", "pode enviar mensagens", "padrões da comunidade",
     "padroes da comunidade", "ações limitadas", "acoes limitadas", "limitámos", "limitamos",
+    "foram restringidas", "identidade para enviares",
 )
 
 
