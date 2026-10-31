@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.0] — 2026-10-31
+
+### Adicionado
+- feat: sai sozinho das telas de **conta suspensa** ("suspendemos o teu perfil": Menu → "Terminar sessão de <@>", avisa com o tipo "suspensa" e segue com as livres) e de **cookies** ("Permitir a utilização de cookies" → "Recusar cookies opcionais"); o `garantir_perfil` também resolve as duas
+
+### Corrigido
+- fix: **post que não abre não é mais pulado** — a conta para nele e a próxima tenta o mesmo; depois de 3 contas diferentes a frota desiste, marca e segue (`posts_falhas.json`, print em `logs/curtidas_falha/`). Pular deixava buraco: o de baixo ganhava ❤ e a fronteira passava por cima do pulado pra sempre
+- fix: post **sem legenda** só conta como feito se ele mesmo foi registrado — o post novo da freireacc bateu com o dela de 21/10, virou a fronteira no fim do chat e a frota inteira deu +0; o mesmo erro com a r4vena._ pulou ~55 posts
+- fix: reconhece o chat aberto no **layout novo** do IG de conta restrita ("Confirma a tua identidade para enviares uma mensagem", título em `header_title`) — a segue21 dava `thread_nao_abriu` com o chat aberto
+- fix: **post inicial** sobe em passo controlado (o arremesso passava direto), faz tudo sem ❤ dali pra baixo mesmo com um ❤ solto no meio e não começa num post qualquer se não achar
+- fix: abre o post de novo quando as curtidas não aparecem (espera, volta, toca de novo)
+- fix: troca de conta tenta de novo quando a tela se redesenha no meio (StaleObject logo depois de reabrir o IG)
+
+### Documentação
+- docs: README com conta suspensa, cookies, conta restrita, post travado e post inicial
+
 ## [1.3.0] — 2026-10-27
 
 ### Adicionado
