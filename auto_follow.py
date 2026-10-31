@@ -2546,7 +2546,16 @@ def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follow
         _sleep(2.5, 3.5)
 
         lc = d(resourceId=rid(LIKE_COUNT))
-        if not lc.exists:
+        if not lc.wait(timeout=6):
+            # 30/10: às vezes o post demora a carregar — a segue19 pulou 5 posts assim (0 follows) e
+            # na run seguinte abriu os MESMOS (+150). Antes de desistir: volta, toca o card de novo e
+            # espera mais uma vez.
+            _log(log, "  as curtidas não apareceram — abrindo o post de novo")
+            d.press("back"); _sleep(1.5, 2.5)
+            d.click(*post["tap"])
+            _sleep(2.5, 3.5)
+            lc = d(resourceId=rid(LIKE_COUNT))
+        if not lc.wait(timeout=6):
             # pode ser post sem curtidas OU a gente nem abriu o post (tela errada). Só marca se
             # continuarmos no post certo; senão a recuperação do topo cuida no próximo giro.
             _log(log, "  não abriu as curtidas — pulando")
