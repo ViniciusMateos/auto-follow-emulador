@@ -2457,11 +2457,14 @@ def _feito_recente(reg, chave):
     - registro com legenda cobre SÓ aquele post;
     - registro só-autor NÃO cobre post com legenda (senão 1 post feito escondia os outros do mesmo
       autor — gui_lomonaco x3, 19/10);
-    - post sem legenda só é coberto pelo registro só-autor. Antes qualquer post registrado do autor
-      cobria: o post NOVO da freireacc (sem legenda, 30/10) bateu com o dela de 21/10, virou a
-      "fronteira" no fim do chat e a frota inteira deu +0 (run-539).
+    - post SEM legenda não é coberto pelo registro: só o ❤ diz se foi feito. Antes qualquer post
+      registrado do autor cobria (o post NOVO da freireacc bateu com o de 21/10, virou a "fronteira"
+      no fim do chat e a frota deu +0 — run-539), e com a chave só-autor dois posts sem legenda do
+      mesmo perfil viravam um (o 2º da alvvwh foi pulado por 3 contas, 31/10).
     O registro é a 2ª proteção: a 1ª é o ❤ (gruda e é lido nos 2 layouts desde 19/10)."""
-    v = reg.get(chave or "")
+    if "|" not in (chave or ""):
+        return False
+    v = reg.get(chave)
     return bool(v) and (time.time() - v) < _FEITOS_JANELA
 
 
