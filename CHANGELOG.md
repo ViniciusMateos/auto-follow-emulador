@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.1] — 2026-10-31
+
+### Corrigido
+- fix: post **sem legenda** só conta como feito pelo ❤, não pelo registro — a chave dele é só o autor, então dois posts sem legenda do mesmo perfil viravam um: o 2º da alvvwh foi pulado por 3 contas na run-540
+
+### Documentação
+- docs: README com a regra do post sem legenda
+
 ## [1.4.0] — 2026-10-31
 
 ### Adicionado
