@@ -19,8 +19,8 @@ próxima do lote tenta o mesmo post; só depois de 3 contas diferentes falharem 
 dele, marca e segue (`posts_falhas.json`; o print da tela fica em `logs/curtidas_falha/`). Antes ele
 pulava pro de baixo, que ganhava ❤, e o pulado ficava pra trás pra sempre.
 
-O registro (`posts_feitos.json`) guarda cada post por autor + começo da legenda; post sem legenda só
-conta como feito se ele mesmo foi registrado (não casa com outro post do mesmo autor).
+O registro (`posts_feitos.json`) guarda cada post por autor + começo da legenda; post sem legenda
+só conta como feito pelo ❤ (sem legenda, dois posts do mesmo perfil teriam a mesma chave).
 
 **Post inicial** (`inicio` nos params): sobe em passo controlado até o post daquele autor e faz tudo
 que estiver sem ❤ dali pra baixo, mesmo com algum ❤ solto no meio. Se não acha o post, não segue
