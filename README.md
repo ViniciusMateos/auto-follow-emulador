@@ -49,7 +49,8 @@ usa esse gancho pra marcar a conta como bloqueada e mandar um push. Vale também
 
 Se a tela se redesenhar no meio da troca de conta (StaleObject, ex. logo depois de reabrir o IG), a
 troca tenta de novo uma vez. No follow, se as curtidas do post não aparecem, ele abre o post de
-novo antes de desistir.
+novo antes de desistir. Se o bot sai do chat e o "voltar" não acha a aba Direct, ele guarda a tela
+em `logs/thread_falha/`, reabre o IG e tenta de novo antes de parar a conta.
 
 Conta **restrita** de DM ("Confirma a tua identidade para enviares uma mensagem" ou "Não podes
 enviar mensagens"): o chat abre sem a caixa de escrever, mas os posts aparecem e ela segue normal.
