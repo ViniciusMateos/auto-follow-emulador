@@ -1828,6 +1828,21 @@ def conta_restrita(d):
     return any(k in xml for k in RESTRITA_KW)
 
 
+def _salvar_diag_thread(d):
+    """Print + dump da tela quando a aba Direct some (logs/thread_falha, as 40 últimas). Nunca levanta."""
+    try:
+        pasta = os.path.join(os.path.dirname(_FEITOS_PATH), "logs", "thread_falha")
+        os.makedirs(pasta, exist_ok=True)
+        base = os.path.join(pasta, time.strftime("%Y%m%d_%H%M%S"))
+        d.screenshot(base + ".png")
+        with open(base + ".xml", "w", encoding="utf-8") as f:
+            f.write(d.dump_hierarchy())
+        for a in sorted(os.listdir(pasta))[:-80]:
+            os.remove(os.path.join(pasta, a))
+    except Exception:
+        pass
+
+
 def abrir_thread(d, nome_chat, log):
     """Abre a aba Direct e entra no chat pelo nome. Devolve True se entrou."""
     _log(log, f"abrindo chat '{nome_chat}'…")
@@ -1842,8 +1857,13 @@ def abrir_thread(d, nome_chat, log):
         d.press("back")
         _sleep(1.0, 1.6)
     if not d(resourceId=rid(DIRECT_TAB)).exists:
-        _log(log, "não achei a aba Direct")
-        return False
+        # 04/11 (segue27, +86 de 125): 4 'back' não acharam a aba Direct e a conta parou. Guarda a tela
+        # (pra saber onde estava) e reabre o IG do zero antes de desistir — a sessão continua logada.
+        _salvar_diag_thread(d)
+        _log(log, "não achei a aba Direct — reabrindo o Instagram e tentando de novo")
+        if not (reabrir_ig(d, log, "aba Direct sumiu") and d(resourceId=rid(DIRECT_TAB)).wait(timeout=12)):
+            _log(log, "não achei a aba Direct")
+            return False
     d(resourceId=rid(DIRECT_TAB)).click()
     _sleep(2.0, 3.0)
 
