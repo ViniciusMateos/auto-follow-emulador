@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.2] — 2026-11-05
+
+### Corrigido
+- fix: se o bot sai do chat e o "voltar" não acha a aba Direct, reabre o Instagram e tenta de novo antes de parar a conta (a segue27 parou com +86 de 125); a tela fica em `logs/thread_falha/`
+
+### Documentação
+- docs: README com a recuperação da aba Direct
+
 ## [1.4.1] — 2026-10-31
 
 ### Corrigido
