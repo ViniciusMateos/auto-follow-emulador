@@ -33,6 +33,8 @@ XMA_BUBBLE = "xma_bubble_container"
 MEDIA_CONTAINER = "media_container"
 REACT_PILL = "message_reactions_pill_container"
 LIKE_COUNT = "like_count"
+LIKE_BTN = "like_button"          # visualizador do post aberto (com ou sem a contagem de Gostos)
+COMMENT_BTN = "comment_button"
 ROW_FOLLOW = "row_follow_button"
 ROW_NAME = "row_user_primary_name"
 
@@ -2142,8 +2144,11 @@ def _posts_compose(xml):
     for (lx1, ly1, lx2, ly2) in linhas:
         dentro = [(c, b, t, ds) for c, b, t, ds in nos
                   if b[1] >= ly1 and b[3] <= ly2 + 2 and b != (lx1, ly1, lx2, ly2)]
-        # card = View na coluna das bolhas (x1 60–130), largura de card, alta
-        cards = [b for c, b, t, ds in dentro if c.endswith(".View") and 60 <= b[0] <= 130
+        # card = View na coluna das bolhas (60–170px a partir do começo da LINHA, não da tela: no layout
+        # de tablet do IG — 900px a 240dpi = 600dp — a conversa fica numa coluna com margem; no chat
+        # com ids da segue29 o conteúdo começa em x=48 e o card em x=132), largura de card, alta.
+        # Mensagem enviada por nós fica bem à direita (x > 350) → não entra.
+        cards = [b for c, b, t, ds in dentro if c.endswith(".View") and 60 <= b[0] - lx1 <= 170
                  and 280 <= (b[2] - b[0]) <= 520 and (b[3] - b[1]) > 200]
         if not cards:
             continue
@@ -2747,6 +2752,13 @@ def processar(d, log, nome_chat="vaitomanoquasenada", max_posts=0, limite_follow
             _sleep(2.5, 3.5)
             lc = d(resourceId=rid(LIKE_COUNT))
         if not lc.wait(timeout=6):
+            # 05/11: post que ESTA conta republicou (nalivia_011 na segue29): o visualizador abre com
+            # "<conta> partilhou uma nota" e SEM o like_count — o IG esconde a contagem só pra quem
+            # republicou (a segue26 vê normal). Cai no post travado: esta conta para e a próxima faz;
+            # o lote dá uma 2ª chance a ela no fim da fila (agente).
+            if _e_repost_meu(d):
+                _log(log, f"  {post['autor']}: esta conta republicou o post — o IG esconde as curtidas "
+                          f"pra ela (outra conta faz)")
             # pode ser post sem curtidas OU a gente nem abriu o post (tela errada). Só marca se
             # continuarmos no post certo; senão a recuperação do topo cuida no próximo giro.
             _log(log, "  não abriu as curtidas")
