@@ -1413,12 +1413,30 @@ def _fechar_dialogos_pos(d, log):
     # isto a tela ficava parada, o pós-login dava "tela desconhecida" com a conta JÁ logada) → pula;
     # sem botão de pular reconhecido, volta
     if "acesso aos teus contactos" in low or "acesso aos seus contatos" in low or "access your contacts" in low:
-        if not _tocar_botao(d, PULAR_ONBOARD_TXT, exato=False, preferir="baixo"):
+        # 05/11 (segue31, conta nova): a variante "Em seguida, podes permitir o acesso aos teus
+        # contactos" NÃO tem 'Ignorar' e o 'voltar' não sai dela — o bot ficou 75s nela e o login deu
+        # falha com a conta já dentro. Da 2ª vez seguida: avança e NEGA o pedido de contatos do Android.
+        agora = time.time()
+        if agora - _CONTACTOS["t"] > 30:
+            _CONTACTOS["n"] = 0
+        _CONTACTOS["n"] += 1
+        _CONTACTOS["t"] = agora
+        if _CONTACTOS["n"] == 1 and _tocar_botao(d, PULAR_ONBOARD_TXT, exato=False, preferir="baixo"):
+            _log(log, "contactos: ignorar")
+        elif _CONTACTOS["n"] <= 4 and _tocar_botao(d, AVANCAR_ONBOARD_TXT, exato=True, preferir="baixo"):
+            _sleep(1.5, 2.5)
+            fechar_permissao_android(d, log)     # contatos → "Não permitir"
+            _log(log, "contactos: sem 'Ignorar' — avancei e neguei o acesso no Android")
+        else:
             d.press("back")
-        _log(log, "contactos: ignorar")
+            _log(log, "contactos: voltar")
         fez = True
         _sleep(1.5, 2.5)
     return fez
+
+
+_CONTACTOS = {"n": 0, "t": 0.0}   # vezes seguidas na tela de contatos (escala de 'Ignorar' pra 'Seguinte')
+AVANCAR_ONBOARD_TXT = ("Seguinte", "Continuar", "OK", "Permitir acesso", "Next", "Continue", "Allow access")
 
 
 # botões de pular as telas de boas-vindas/permissões do IG (mesma lista do criar conta)
@@ -1449,7 +1467,16 @@ def _resolver_pos_login(d, user, get_codigo, log):
     aprov_pedida = False     # já escolheu "notificação noutro dispositivo"?
     metodo_tentou = 0
     tela, parada_desde = None, time.time()
+    parar = getattr(_LOGIN_CTX, "parar", None)
     while time.time() < fim:
+        # 05/11: o botão Parar do app vale AQUI também — a espera do código/aprovação segurava o job
+        # (e o "verificando" do app) por até 5 min depois de parar
+        try:
+            if parar and parar():
+                _log(log, "parada pedida — abortando o login")
+                return {"ok": False, "motivo": "parado"}
+        except Exception:
+            pass
         xml = _dump(d)
         low = xml.lower()
 
@@ -1459,8 +1486,12 @@ def _resolver_pos_login(d, user, get_codigo, log):
         if assin != tela:
             tela, parada_desde = assin, time.time()
         elif not pediu_codigo and not aprov_pedida and time.time() - parada_desde > 75:
-            _log(log, f"falhou: tela desconhecida parada há mais de 1 min ({' / '.join(assin[:3]) or 'sem texto'})")
+            _log(log, f"tela desconhecida parada há mais de 1 min ({' / '.join(assin[:3]) or 'sem texto'})")
             reabrir_ig(d, log, "tela desconhecida")
+            if _confirmar_logado(d, user, log):
+                _log(log, f"logado: @{user} (a tela travou depois da senha, mas a conta entrou)")
+                return {"ok": True, "motivo": "ok"}
+            _log(log, "falhou: a conta não entrou")
             return {"ok": False, "motivo": "tela_desconhecida"}
 
         # 0b) o @ não existe (IG sugere uma conta parecida) → aborta SEM tocar em "Continuar"
@@ -1605,7 +1636,35 @@ def _resolver_pos_login(d, user, get_codigo, log):
 
     _log(log, "falhou: tempo esgotado no pós-login")
     reabrir_ig(d, log, "tempo esgotado")
+    if _confirmar_logado(d, user, log):
+        _log(log, f"logado: @{user} (o pós-login não confirmou a tempo, mas a conta entrou)")
+        return {"ok": True, "motivo": "ok"}
     return {"ok": False, "motivo": "timeout_pos_login"}
+
+
+def _e_repost_meu(d):
+    """Visualizador de um post que a conta ATIVA republicou: tem o botão de curtir e a nota
+    "<conta> partilhou uma nota", mas não o like_count (o IG esconde a contagem pra quem republicou)."""
+    try:
+        if d(resourceId=rid(LIKE_COUNT)).exists or not d(resourceId=rid(LIKE_BTN)).exists:
+            return False
+        eu = (conta_atual(d) or "").strip().lower()
+        xml = _dump(d).lower()
+        return "partilhou uma nota" in xml and (not eu or eu in xml)
+    except Exception:
+        return False
+
+
+def _confirmar_logado(d, user, log=None):
+    """O pós-login 'falhou' (tela que não conhecemos / teto de tempo), mas a conta pode ter ENTRADO —
+    05/11: a segue31 logou, travou na tela de contatos e o job saiu como falha. Vai pro perfil e
+    confere a conta ativa. Só a conta certa conta como sucesso."""
+    try:
+        garantir_perfil(d, log)
+        _sleep(1.0, 1.6)
+        return (conta_atual(d) or "").strip().lstrip("@").lower() == (user or "").strip().lstrip("@").lower()
+    except Exception:
+        return False
 
 
 def _login_conta_salva(d, user, get_codigo, log, senha=None):
@@ -1706,7 +1765,20 @@ def _login_conta_salva(d, user, get_codigo, log, senha=None):
     return _resolver_pos_login(d, user, get_codigo, log)
 
 
-def login_conta(d, user, senha, get_codigo=None, log=None):
+import threading as _threading
+_LOGIN_CTX = _threading.local()   # o `parar` do login em curso NESTA thread (cada instância = 1 thread)
+
+
+def login_conta(d, user, senha, get_codigo=None, log=None, parar=None):
+    """Wrapper: guarda o `parar` (botão Parar do app) pro pós-login consultar e chama o login."""
+    _LOGIN_CTX.parar = parar
+    try:
+        return _login_conta(d, user, senha, get_codigo=get_codigo, log=log)
+    finally:
+        _LOGIN_CTX.parar = None
+
+
+def _login_conta(d, user, senha, get_codigo=None, log=None):
     """Reconecta/loga a conta `user` no app do IG do device (uiautomator2), de forma HUMANA e
     conservadora (toques, digitação em pedaços com pausas). Detecta o estado pela tela:
       - já logado nessa conta        → nada a fazer;
