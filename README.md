@@ -34,7 +34,11 @@ formulário** (com código pelo app, ou aprovação no seu celular quando o apar
 responder os pedidos de permissão do Android. No login: pede a aprovação no outro aparelho **uma
 vez só** (pedido repetido derruba o anterior) e entende o "pedido rejeitado"; "É esta a tua conta?"
 vira conta inexistente (sem tocar em "Continuar"); pula a tela de contatos; e se ficar mais de 1 min
-numa tela que não conhece, reabre o IG e desiste em vez de segurar a fila.
+numa tela que não conhece, reabre o IG e desiste em vez de segurar a fila. Antes de dar um login como
+falho, confere pelo perfil se a conta entrou. O parar do app vale também durante a espera de código.
+
+Post que a própria conta republicou abre sem o coração de sempre: o bot reconhece e não trata como
+post travado. No lote, a conta que parou nele ganha uma 2ª chance no fim.
 
 **Sair do aparelho** — `sair_conta(d, nome)`: Definições e atividade → "Terminar sessão" →
 confirma, sem guardar o login, e confere no seletor que a conta sumiu (base do bot Remover Contas).
