@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.3] — 2026-11-06
+
+### Corrigido
+- fix: login que dava falha mas tinha entrado — confere pelo perfil antes de desistir
+- fix: tela de contatos que insiste escala de "Ignorar" pra voltar
+- fix: o parar do app vale na espera de código ou aprovação do login
+- fix: layout do chat medido em relação à lista, vale pro layout de tablet
+- fix: post republicado pela própria conta não conta mais como travado
+
+### Documentação
+- docs: README com o login conferido e a 2ª chance
+
 ## [1.4.2] — 2026-11-05
 
 ### Corrigido
