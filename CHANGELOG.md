@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.0] — 2026-11-07
+
+### Adicionado
+- feat: card de **reel** no grupo entra como post — o reel abre com o mesmo contador de curtidas e a mesma lista
+
+### Corrigido
+- fix: fronteira falsa com legenda só de emoji ou registro solto — o ❤ vale sozinho e o registro só vale com 2 cards feitos em sequência
+- fix: reconhece a tela nova de conta suspensa ("Your profile … is suspended") e sai pelo menu do dump
+- fix: aviso "Guardar informações de login" volta a ser detectado
+
+### Documentação
+- docs: README com a fronteira nova e o reel
+
 ## [1.4.3] — 2026-11-06
 
 ### Corrigido
