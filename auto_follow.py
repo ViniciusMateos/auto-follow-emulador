@@ -989,7 +989,9 @@ DESAFIO_HUMANO_KW = ("confirma que és uma pessoa", "confirme que você é uma p
 # e também trava o emulador pra todas as contas. A tela não mostra o @ (só o nome de exibição).
 SUSPENSA_KW = ("suspendemos o teu perfil", "suspendemos a tua conta", "suspendemos o seu perfil",
                "suspendemos sua conta", "suspendemos seu perfil", "we suspended your account",
-               "we suspended your profile", "data da suspensão")
+               "we suspended your profile", "data da suspensão",
+               # 06/11, segue17: "Your profile <conta> is suspended" + "O teu perfil não está visível…"
+               "is suspended", "o teu perfil não está visível", "pedir revisão")
 
 
 # o agente define: callback(conta) → push "conta com bloqueio" + marca "bloqueada" no backend
@@ -1090,21 +1092,44 @@ def sair_do_desafio(d, log=None):
     def _item():
         el = d(textStartsWith="Terminar sessão de")
         return el if el.exists else d(descriptionStartsWith="Terminar sessão de")
+    # 06/11, segue17 ("Your profile <conta> is suspended"): o seletor do u2 NÃO vê o botão Menu (só o
+    # dump) e o item do Menu é só "Terminar sessão", sem o @ — toca pelo dump e aceita os dois textos
+    def _tocar_rotulo(rotulo, por_desc=False, ultimo=False):
+        xml = _dump(d)
+        achados = []
+        for m in re.finditer(r"<node[^>]*/?>", xml):
+            t = m.group(0)
+            if _attr(t, "content-desc" if por_desc else "text").strip() == rotulo and _bounds(t):
+                achados.append(_bounds(t))
+        if not achados:
+            return False
+        bb = achados[-1] if ultimo else achados[0]
+        d.click((bb[0] + bb[2]) // 2, (bb[1] + bb[3]) // 2)
+        return True
+
     try:
         el = _item()
         if not el.exists:                  # o Menu ainda não está aberto
-            if not d(description="Menu").exists:
-                return False
-            for _ in range(2):
-                d(description="Menu").click()
-                fim = time.time() + 8
-                while time.time() < fim and not _item().exists:
-                    time.sleep(1.0)
-                if _item().exists:
-                    break
-            el = _item()
-        if not el.exists:
-            return False                   # NÃO aperta voltar: na suspensão o voltar fecha o IG
+            if d(description="Menu").exists:
+                for _ in range(2):
+                    d(description="Menu").click()
+                    fim = time.time() + 8
+                    while time.time() < fim and not _item().exists:
+                        time.sleep(1.0)
+                    if _item().exists:
+                        break
+                el = _item()
+            if not el.exists:              # variação nova da tela de suspensão
+                if not _tocar_rotulo("Menu", por_desc=True):
+                    return False
+                _sleep(3.0, 4.0)
+                if not _tocar_rotulo("Terminar sessão"):
+                    return False           # NÃO aperta voltar: na suspensão o voltar fecha o IG
+                _sleep(2.5, 3.5)
+                _tocar_rotulo("Terminar sessão", ultimo=True)     # confirma no diálogo
+                _sleep(4.0, 6.0)
+                _log(log, "tirei a conta do aparelho (sessão encerrada) pra não travar os outros bots")
+                return True
         rot = (el.info.get("text") or el.info.get("contentDescription") or "")
         m = re.search(r"terminar sessão de\s+@?([A-Za-z0-9._]{1,30})", rot, re.I)
         conta = m.group(1) if m else ""
