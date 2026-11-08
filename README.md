@@ -7,9 +7,13 @@ fica logada no app de verdade, a sessão não cai.
 ## Como funciona
 
 1. Abre o chat do grupo (ex: `vaitomanoquasenada`).
-2. Vai ao fim da conversa e **sobe até a fronteira**: o último post já feito (com reação ❤ ou no
-   registro da frota, `posts_feitos.json`). Nunca começa num post qualquer do meio.
-3. Processa pra baixo, em ordem de envio: abre o post → lista de curtidas → segue todo mundo.
+2. Vai ao fim da conversa e **sobe até a fronteira**: o último post já feito. O ❤ vale sozinho; o
+   registro da frota (`posts_feitos.json`) só vale com 2 cards feitos em sequência (um registrado
+   solto é colisão de legenda, não a fronteira) e card com legenda só de emoji não conta. Nunca
+   começa num post qualquer do meio.
+3. Processa pra baixo, em ordem de envio: abre o post → lista de curtidas → segue todo mundo. Vale
+   qualquer card de post do grupo: foto, carrossel, vídeo e **reel** (o card de reel tem outro
+   formato, mas o reel abre com o mesmo contador de curtidas e a mesma lista).
 4. Reage ❤ no post pra marcar como feito (uma conta por post, coordenando a frota).
 5. Para na hora se o Instagram mostrar bloqueio de ação; o agente aborta o lote depois de N
    soft-blocks seguidos e deixa a conta que tomou soft-block descansando (tudo pelo modo).
