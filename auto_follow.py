@@ -1407,7 +1407,7 @@ def _fechar_dialogos_pos(d, log):
     xml = _dump(d)
     low = xml.lower()
     # "Guardar/Salvar as informações de início de sessão?" → GUARDAR (mantém logado no device).
-    # guardar: "A AGUARDAR aprovação" (tela de aprovar no outro aparelho) NÃO é esse diálogo — o
+    # \bguardar: "A AGUARDAR aprovação" (tela de aprovar no outro aparelho) NÃO é esse diálogo — o
     # substring casava e o bot ficava tocando na tela de espera a cada 3s (brechó 20/10)
     # frase COMPLETA do diálogo primeiro ("Guardar as tuas informações de acesso?", brechó 21/10) —
     # ela não depende de nada mais na tela (antes o bot ficou 3 min parado nela)
@@ -1418,7 +1418,7 @@ def _fechar_dialogos_pos(d, log):
             return True
     if any(k in low for k in AGUARDA_APROV_FORTE):
         return False
-    if ((re.search(r"guardar", low) or "salvar" in low or "save your login" in low) and
+    if ((re.search(r"\bguardar\b", low) or "salvar" in low or "save your login" in low) and
             ("início de sessão" in low or "inicio de sessao" in low or "dados de login" in low or
              "login info" in low or "informações de" in low or "informacoes de" in low)):
         if (_tocar_botao(d, SALVAR_LOGIN_TXT, exato=False) or
