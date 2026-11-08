@@ -30,6 +30,7 @@ PROFILE_TAB = "profile_tab"
 ACC_SWITCHER = "action_bar_username_container"   # topo do perfil: nome da conta + seta
 ACC_TITLE = "action_bar_title"                    # texto do nome da conta atual
 XMA_BUBBLE = "xma_bubble_container"
+REEL_CARD = "reel_share_item_view"     # card de reel compartilhado no grupo (autor em title_text)
 MEDIA_CONTAINER = "media_container"
 REACT_PILL = "message_reactions_pill_container"
 LIKE_COUNT = "like_count"
@@ -2062,7 +2063,8 @@ def posts_na_tela(d):
             bb = _bounds(t)
             if bb:
                 medias.append(bb)
-        elif (rid_.endswith("/title") or rid_.endswith("/username")) and _attr(t, "text"):
+        elif (rid_.endswith("/title") or rid_.endswith("/username") or rid_.endswith("/title_text")) \
+                and _attr(t, "text"):
             bb = _bounds(t)
             if bb:
                 autores.append((bb[1], _attr(t, "text")))
@@ -2073,7 +2075,10 @@ def posts_na_tela(d):
     posts = []
     for m in re.finditer(r"<node[^>]*/?>", xml):
         t = m.group(0)
-        if not _attr(t, "resource-id").endswith(XMA_BUBBLE):
+        # card de post (xma_bubble) OU de REEL (reel_share_item_view — 07/11: o reel no grupo não era
+        # lido; o visualizador dele tem o mesmo like_count e a folha de curtidas é igual)
+        eh_reel = _attr(t, "resource-id").endswith(REEL_CARD)
+        if not (_attr(t, "resource-id").endswith(XMA_BUBBLE) or eh_reel):
             continue
         bb = _bounds(t)
         if not bb:
@@ -2085,7 +2090,7 @@ def posts_na_tela(d):
         autor = min(cand, key=lambda a: abs(a[0] - (y1 + 45)))[1] if cand else "?"
         # POST = tem um media_container DENTRO da bolha e é alto (mídia de verdade).
         # perfil/nota compartilhada não tem media_container (ou é baixinha).
-        tem_media = any(x1 - 5 <= md[0] and md[3] <= y2 + 5 and md[1] >= y1 - 5 for md in medias)
+        tem_media = eh_reel or any(x1 - 5 <= md[0] and md[3] <= y2 + 5 and md[1] >= y1 - 5 for md in medias)
         ehpost = tem_media and (y2 - y1) > 320
         legs = [(c[0], c[1]) for c in caps if y1 <= c[0] <= y2]
         legenda = min(legs)[1] if legs else ""
