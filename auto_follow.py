@@ -2442,16 +2442,35 @@ def ir_para_fronteira(d, log, max_scrolls=400, reg=None, parar_flag=None):
     """Vai ao fim e SOBE em passos CONTROLADOS até achar um card já FEITO (reagido OU no REGISTRO
     da frota) — a fronteira. Daí o loop processa pra BAIXO. Usar o registro além da reação é
     ESSENCIAL: as reações não colam, então sem isso ele subia a thread INTEIRA (lento) sem nunca
-    achar fronteira. Com o registro, para no 1º post já-feito, pertinho dos novos."""
+    achar fronteira. Com o registro, para no 1º post já-feito, pertinho dos novos.
+    O ❤ vale sozinho; o REGISTRO só vale com 2 cards feitos em sequência: 1 registrado solto entre
+    cards sem marca é colisão (post novo com a mesma legenda de um antigo), não a fronteira — parar
+    nele deixa pra trás tudo o que está acima (run-596, 06/11). Card sem legenda lida não conta nem zera."""
     _ir_ao_fundo(d, log)
     _sleep(1.0, 1.5)
     _log(log, "subindo (passo controlado) até o último card feito (fronteira)…")
+    seguidos, vistos = 0, set()
     for i in range(max_scrolls):
         if parar_flag and parar_flag():
             return "parado"   # o processar() vê o flag logo em seguida e encerra sem seguir
         _assentar(d)
         posts, _blk = posts_na_tela(d)
-        if any(p["reagido"] or (reg is not None and _feito_recente(reg, p["chave"])) for p in posts):
+        achou = False
+        for p in sorted(posts, key=lambda x: -x["y1"]):      # de baixo (novo) pra cima (velho)
+            if p["reagido"]:
+                achou = True
+                break
+            ch = p["chave"]
+            # sem legenda lida ou legenda só de emoji: o card não diz nada, não conta nem zera (o
+            # "..✨" da llopes, já feito, zerou a sequência e a conta subiu 3 cards a mais, run-598)
+            if reg is None or "|" not in (ch or "") or _legenda_fraca(ch) or ch in vistos:
+                continue
+            vistos.add(ch)
+            seguidos = seguidos + 1 if _feito_recente(reg, ch) else 0
+            if seguidos >= 2:
+                achou = True
+                break
+        if achou:
             _log(log, f"fronteira achada (scroll {i})")
             return "fronteira"
         if not _subir_ctrl(d):
@@ -2548,6 +2567,14 @@ def _feitos_salvar(reg):
         pass
 
 
+def _legenda_fraca(chave):
+    """A legenda da chave 'autor|legenda' não identifica o post: só emoji/pontuação ("‼️", "..✨")."""
+    autor, _, leg = (chave or "").partition("|")
+    if leg.startswith(autor):
+        leg = leg[len(autor):]
+    return sum(c.isalnum() for c in re.sub(r"&#?\w+;", "", leg)) < 3
+
+
 def _feito_recente(reg, chave):
     """chave = 'autor|legenda' (ou só 'autor' quando a legenda não deu pra ler — no layout antigo o
     caption_title às vezes vem VAZIO no dump, ex.: legenda começando com aspas).
@@ -2558,8 +2585,12 @@ def _feito_recente(reg, chave):
       registrado do autor cobria (o post NOVO da freireacc bateu com o de 21/10, virou a "fronteira"
       no fim do chat e a frota deu +0 — run-539), e com a chave só-autor dois posts sem legenda do
       mesmo perfil viravam um (o 2º da alvvwh foi pulado por 3 contas, 31/10).
+    - legenda SÓ de emoji/pontuação também não identifica o post: o "‼️" novo da elisamidt bateu com o
+      "‼️" dela de 01/11, virou fronteira falsa e a frota deixou ~14 posts pra trás (run-596, 06/11).
     O registro é a 2ª proteção: a 1ª é o ❤ (gruda e é lido nos 2 layouts desde 19/10)."""
     if "|" not in (chave or ""):
+        return False
+    if _legenda_fraca(chave):
         return False
     v = reg.get(chave)
     return bool(v) and (time.time() - v) < _FEITOS_JANELA
