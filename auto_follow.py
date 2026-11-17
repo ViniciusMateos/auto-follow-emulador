@@ -52,6 +52,17 @@ BLOQUEIO = (
 )
 BLOQUEIO_FORTE = ("ação bloqueada", "acção bloqueada", "action blocked",
                   "bloqueámos", "bloqueamos", "we've blocked", "we blocked")
+# 15/11 (segue31, funil): "O teu pedido está pendente — algumas contas, incluindo as públicas, preferem rever
+# manualmente os seguidores" logo depois de tocar Seguir = o IG segurou AQUELE follow (sinal de limite de
+# follow, não bloqueio de ação). Fica FORA do BLOQUEIO: aqui no chat o "volta pra folha" já fecha a janela e
+# a regra dos follows que não colam decide; quem abre perfil por link (Like Fallback/funil) checa à parte.
+PEDIDO_PENDENTE = ("o teu pedido está pendente", "o seu pedido está pendente", "your request is pending",
+                   "rever manualmente os seguidores")
+
+
+def _pedido_pendente(xml):
+    low = xml.lower()
+    return any(k in low for k in PEDIDO_PENDENTE)
 
 
 def rid(name):
