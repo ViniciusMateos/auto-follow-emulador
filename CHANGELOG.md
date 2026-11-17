@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.6.0] — 2026-11-17
+
+### Adicionado
+- feat: `PEDIDO_PENDENTE` / `_pedido_pendente(xml)` — reconhece a janela "O teu pedido está pendente — algumas contas preferem rever manualmente os seguidores" (o IG segurou o follow); fica fora do `BLOQUEIO` porque aqui no chat o "volta pra folha" já fecha a janela, e quem abre perfil por link (Like Fallback/funil) usa à parte
+
 ## [1.5.0] — 2026-11-07
 
 ### Adicionado
